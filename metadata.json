@@ -1,0 +1,8 @@
+{
+  "name": "Gami Class",
+  "description": "Portal Belajar Siswa dan Guru dengan sistem gamifikasi, tugas, materi, misi, poin, badge, dan leaderboard kelas responsif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

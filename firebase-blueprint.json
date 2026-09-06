@@ -1,0 +1,375 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profiles for teachers and students with roles, NIS, and avatar settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["teacher", "student", "admin"] },
+        "studentNumber": { "type": "string" },
+        "absentNumber": { "type": "number" },
+        "classIds": { "type": "array" },
+        "avatar": { "type": "string" },
+        "email": { "type": "string", "format": "email" }
+      },
+      "required": ["uid", "displayName", "role"]
+    },
+    "classes": {
+      "title": "Classes",
+      "description": "School classes managed by teachers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "grade": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "homeroomTeacherId": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "materials": {
+      "title": "Learning Materials",
+      "description": "Study materials with YouTube embeds and attachments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "subject": { "type": "string" },
+        "classId": { "type": "string" },
+        "youtubeUrl": { "type": "string" },
+        "rewardPoints": { "type": "number" }
+      },
+      "required": ["id", "title"]
+    },
+    "assignments": {
+      "title": "Assignments & Tasks",
+      "description": "Homework and tasks created by teachers with gamification points",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subject": { "type": "string" },
+        "classId": { "type": "string" },
+        "deadline": { "type": "string" },
+        "maxScore": { "type": "number" },
+        "rewardPoints": { "type": "number" }
+      },
+      "required": ["id", "title"]
+    },
+    "submissions": {
+      "title": "Task Submissions",
+      "description": "Student submissions, scores, and teacher feedbacks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "assignmentId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "content": { "type": "string" },
+        "status": { "type": "string" },
+        "score": { "type": "number" }
+      },
+      "required": ["id", "assignmentId", "studentId"]
+    },
+    "missions": {
+      "title": "Gamification Missions",
+      "description": "Daily and special missions for students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "rewardPoints": { "type": "number" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "title", "rewardPoints"]
+    },
+    "userStats": {
+      "title": "Student Game Stats",
+      "description": "Points, levels, streaks, and experience points for students",
+      "type": "object",
+      "properties": {
+        "totalPoints": { "type": "number" },
+        "level": { "type": "number" },
+        "streakDays": { "type": "number" }
+      }
+    },
+    "missionProgress": {
+      "title": "Mission Progress",
+      "description": "Tracking individual student progress on missions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "missionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "status": { "type": "string" },
+        "currentValue": { "type": "number" }
+      },
+      "required": ["id", "missionId", "userId", "status"]
+    },
+    "materialProgress": {
+      "title": "Material Progress",
+      "description": "Tracking student completion of reading and video materials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "materialId": { "type": "string" },
+        "userId": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "materialId", "userId"]
+    },
+    "userBadges": {
+      "title": "Earned User Badges",
+      "description": "Gamification badges earned by students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "badgeId": { "type": "string" },
+        "unlockedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "badgeId"]
+    },
+    "badges": {
+      "title": "Available Badges",
+      "description": "Gamification badge definitions and criteria",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "appMetadata": {
+      "title": "Application Sync Metadata",
+      "description": "Version and initial sync timestamp flags",
+      "type": "object",
+      "properties": {
+        "initialized": { "type": "boolean" },
+        "initializedAt": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "test": {
+      "title": "Connection Test",
+      "description": "Firestore connection diagnostic document",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    },
+    "announcements": {
+      "title": "Class Announcements",
+      "description": "Notice board and broadcast messages",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorName": { "type": "string" }
+      },
+      "required": ["id", "title", "content"]
+    },
+    "pointLedger": {
+      "title": "Point History Ledger",
+      "description": "History of all points gained or deducted",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "reason": { "type": "string" }
+      },
+      "required": ["id", "userId", "amount"]
+    },
+    "auditLogs": {
+      "title": "Audit Logs",
+      "description": "System and teacher audit log entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "actorId", "action"]
+    },
+    "schools": {
+      "title": "School Settings",
+      "description": "School settings and configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "academicYear": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "User notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "isRead": { "type": "boolean" }
+      },
+      "required": ["id", "userId", "title"]
+    },
+    "chatMessages": {
+      "title": "Chat Messages",
+      "description": "Realtime chat messages for classroom discussion and teacher-student Q&A",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "channelType": { "type": "string", "enum": ["public", "direct"] },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "classId", "channelType", "senderId", "text"]
+    },
+    "userPresence": {
+      "title": "User Presence",
+      "type": "object",
+      "description": "Real-time user online presence and activity tracking",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "classId": { "type": "string" },
+        "isOnline": { "type": "boolean" },
+        "lastSeen": { "type": "number" },
+        "lastSeenIso": { "type": "string" }
+      },
+      "required": ["userId", "isOnline", "lastSeen"]
+    },
+    "ideBoards": {
+      "title": "Papan Ide Digital Collaboration Boards",
+      "description": "Collaborative whiteboard canvas with sticky notes, drawings, shapes, and templates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "classId": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "isLocked": { "type": "boolean" },
+        "template": { "type": "string" },
+        "elements": { "type": "object" },
+        "activeParticipants": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "code", "title", "createdBy", "template"]
+    }
+  },
+  "firestore": {
+    "/ide_boards/{boardId}": {
+      "schema": "ideBoards",
+      "description": "Papan Ide collaborative whiteboards"
+    },
+    "/user_presence/{userId}": {
+      "schema": "userPresence",
+      "description": "Real-time online presence tracking collection"
+    },
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profiles collection"
+    },
+    "/classes/{classId}": {
+      "schema": "classes",
+      "description": "Classrooms collection"
+    },
+    "/materials/{materialId}": {
+      "schema": "materials",
+      "description": "Learning materials collection"
+    },
+    "/assignments/{assignmentId}": {
+      "schema": "assignments",
+      "description": "Assignments collection"
+    },
+    "/submissions/{submissionId}": {
+      "schema": "submissions",
+      "description": "Student assignment submissions"
+    },
+    "/missions/{missionId}": {
+      "schema": "missions",
+      "description": "Gamification missions"
+    },
+    "/mission_progress/{progressId}": {
+      "schema": "missionProgress",
+      "description": "Mission progress records"
+    },
+    "/material_progress/{progressId}": {
+      "schema": "materialProgress",
+      "description": "Material progress records"
+    },
+    "/user_stats/{userId}": {
+      "schema": "userStats",
+      "description": "Gamification stats per user"
+    },
+    "/user_badges/{badgeId}": {
+      "schema": "userBadges",
+      "description": "Badges earned by users"
+    },
+    "/badges/{badgeId}": {
+      "schema": "badges",
+      "description": "Badge catalog"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "announcements",
+      "description": "Class announcements"
+    },
+    "/point_ledger/{ledgerId}": {
+      "schema": "pointLedger",
+      "description": "History of gamification point changes"
+    },
+    "/app_metadata/{metaId}": {
+      "schema": "appMetadata",
+      "description": "App initial sync state"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "auditLogs",
+      "description": "Audit logs collection"
+    },
+    "/school/{schoolId}": {
+      "schema": "schools",
+      "description": "School settings collection"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "notifications",
+      "description": "User notifications collection"
+    },
+    "/chat_messages/{messageId}": {
+      "schema": "chatMessages",
+      "description": "Chat messages collection for class forum and Q&A"
+    },
+    "/test/{testId}": {
+      "schema": "test",
+      "description": "Connection probe test path"
+    }
+  }
+}

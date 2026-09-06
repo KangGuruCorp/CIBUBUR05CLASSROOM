@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gami Class</title>
+    <meta name="description" content="Portal Belajar Siswa dan Guru dengan sistem gamifikasi, tugas, materi, misi, poin, badge, dan leaderboard kelas responsif." />
+    <meta property="og:title" content="Gami Class" />
+    <meta property="og:description" content="Portal Belajar Siswa dan Guru dengan sistem gamifikasi, tugas, materi, misi, poin, badge, dan leaderboard kelas responsif." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Gracefully prevent masked cross-origin Script error noise from crashing container preview
+      window.addEventListener('error', function(event) {
+        if (event && event.message === 'Script error.') {
+          event.preventDefault();
+          console.warn('Masked cross-origin script error handled gracefully.');
+        }
+      });
+    </script>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

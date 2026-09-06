@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Document ID validation helper
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 500;
+    }
+
+    // User profile documents
+    match /users/{userId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(userId);
+    }
+
+    // Classes
+    match /classes/{classId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(classId);
+    }
+
+    // Learning materials
+    match /materials/{materialId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(materialId);
+    }
+
+    // Assignments
+    match /assignments/{assignmentId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(assignmentId);
+    }
+
+    // Submissions
+    match /submissions/{submissionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(submissionId);
+    }
+
+    // Missions catalog
+    match /missions/{missionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(missionId);
+    }
+
+    // Mission progress
+    match /mission_progress/{progressId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(progressId);
+    }
+
+    // Material progress
+    match /material_progress/{progressId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(progressId);
+    }
+
+    // User statistics
+    match /user_stats/{userId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(userId);
+    }
+
+    // Badges
+    match /badges/{badgeId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(badgeId);
+    }
+
+    // User badges
+    match /user_badges/{userBadgeId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(userBadgeId);
+    }
+
+    // Announcements
+    match /announcements/{announcementId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(announcementId);
+    }
+
+    // Point history ledger
+    match /point_ledger/{ledgerId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(ledgerId);
+    }
+
+    // System audit logs
+    match /audit_logs/{logId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(logId);
+    }
+
+    // School configuration
+    match /school/{schoolId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(schoolId);
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(notificationId);
+    }
+
+    // Chat messages
+    match /chat_messages/{messageId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(messageId);
+    }
+
+    // User presence tracking
+    match /user_presence/{userId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(userId);
+    }
+
+    // Application sync metadata
+    match /app_metadata/{metaId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(metaId);
+    }
+
+    // Papan Ide Digital Collaboration Boards
+    match /ide_boards/{boardId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(boardId);
+    }
+
+    // Test connection probe
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+
+    // Seed data collection
+    match /seed_data/{seedId} {
+      allow read, write: if true;
+    }
+
+    // Default fallback for applet documents
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
