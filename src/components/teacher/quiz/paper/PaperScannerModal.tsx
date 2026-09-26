@@ -1121,30 +1121,14 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                 <ChevronRight className="w-4 h-4" />
               </button>
 
-              <button
+                            <button
                 type="button"
-                onClick={handleToggleLock}
-                className={`ml-1 px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                  isLocked ? 'bg-rose-600 text-white shadow-xs' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-                title={isLocked ? 'Buka Kunci Jawaban' : 'Kunci Jawaban'}
+                onClick={onClose}
+                className="ml-2 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer bg-rose-600 hover:bg-rose-700 text-white shadow-md"
+                title="Akhiri Pemindaian Kuis"
               >
-                {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{isLocked ? 'Terkunci' : 'Kunci'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToggleReveal}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                  showCorrectAnswer
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                }`}
-                title={showCorrectAnswer ? 'Sembunyikan Kunci' : 'Tampilkan Jawaban Benar'}
-              >
-                {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{showCorrectAnswer ? 'Tutup Kunci' : 'Kunci'}</span>
+                <X className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Akhiri Quiz</span>
               </button>
             </div>
           </div>
@@ -1311,6 +1295,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+
 
 
 
