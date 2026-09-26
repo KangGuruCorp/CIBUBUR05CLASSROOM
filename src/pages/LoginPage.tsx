@@ -8,7 +8,7 @@ export const LoginPage: React.FC = () => {
   const { switchUser } = useApp();
   const [role, setRole] = useState<UserRole>('student');
 
-  const handleLoginSuccess = (userId: string, role: 'student' | 'teacher') => {
+  const handleLoginSuccess = (userId: string, role: 'student' | 'teacher' | 'admin') => {
     switchUser(userId);
   };
 
