@@ -195,14 +195,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
               {isTeacher ? <GraduationCap className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 font-display">
-                {isTeacher ? 'Edit Profil Guru' : 'Ganti Foto Profil'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {isTeacher
-                  ? 'Perbarui nama lengkap, gelar, dan foto profil Anda'
-                  : 'Pilih foto profil resmi Anda untuk akun Kelas 6E'}
-              </p>
+              <h3 className="text-base font-bold text-slate-900 font-display">{isTeacher ? 'Edit Profil' : 'Ganti Foto'}</h3>
             </div>
           </div>
           <button
@@ -236,9 +229,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
             </div>
 
             <div className="space-y-1 text-center sm:text-left flex-1 min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 inline-block">
-                {isTeacher ? 'Pratinjau Profil Guru' : 'Pratinjau Foto'}
-              </span>
+              
               <h4 className="text-sm font-bold text-slate-900 truncate">
                 {isTeacher ? (teacherName.trim() || 'Nama Guru') : currentUser.displayName}
               </h4>
@@ -247,9 +238,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
                   @{teacherUsername.trim() || 'username'}
                 </p>
               )}
-              <p className="text-[11px] font-semibold text-slate-500">
-                {isTeacher ? 'Guru Kelas & Pengajar' : 'Siswa Kelas 6E'}
-              </p>
+              
 
               {previewUrl && (
                 <div className="pt-1.5 flex justify-center sm:justify-start">
@@ -274,16 +263,8 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
           {isTeacher && (
             <div className="space-y-3">
               {/* Teacher Full Name */}
-              <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-2">
-                <label className="block text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-indigo-950">
-                    <UserCheck className="w-4 h-4 text-indigo-600" />
-                    <span>Nama Lengkap Guru (dengan Gelar)</span>
-                  </span>
-                  <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-100/70 px-2 py-0.5 rounded-full">
-                    Wajib Diisi
-                  </span>
-                </label>
+              <div className="space-y-1.5">
+<label className="block text-xs font-bold text-slate-700">Nama Lengkap</label>
 
                 <div className="relative">
                   <input
@@ -297,35 +278,15 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
                   <PenLine className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
-                <p className="text-[11px] text-slate-500 leading-snug">
-                  Nama ini otomatis disinkronkan ke seluruh materi pelajaran, tugas, rekap nilai, dan pengumuman kelas.
-                </p>
+                
               </div>
 
               {/* Teacher Username & Password Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3.5">
-                <div className="flex items-center justify-between border-b border-slate-200/70 pb-2.5">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <KeyRound className="w-4 h-4 text-indigo-600" />
-                    <span>Kredensial Masuk Guru (Username & Password)</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                    <span>Privasi Terjaga</span>
-                  </span>
-                </div>
+              
 
                 {/* Username Input */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <AtSign className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Username Login Guru</span>
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      3-30 karakter (tanpa spasi)
-                    </span>
-                  </label>
+                  <label className="block text-xs font-bold text-slate-700">Username</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 text-xs font-mono font-bold">
                       @
@@ -339,22 +300,12 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
                       maxLength={30}
                     />
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Digunakan bersama kata sandi saat masuk ke portal login guru.
-                  </p>
+                  
                 </div>
 
                 {/* Password Input */}
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Kata Sandi (Password) Guru</span>
-                    </span>
-                    <span className="text-[10px] font-semibold text-indigo-600">
-                      Minimal 4 karakter
-                    </span>
-                  </label>
+                  <label className="block text-xs font-bold text-slate-700">Password</label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
@@ -372,11 +323,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Pastikan mengingat kata sandi ini untuk masuk ke portal guru berikutnya.
-                  </p>
                 </div>
-              </div>
             </div>
           )}
 
@@ -549,4 +496,5 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
     </div>
   );
 };
+
 
