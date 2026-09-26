@@ -24,7 +24,7 @@ app.use('/api', (req, res, next) => {
 let pool = null;
 if (process.env.POSTGRES_URL || process.env.DATABASE_URL) {
   pool = new Pool({
-    connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL,
+    connectionString: (process.env.POSTGRES_URL || process.env.DATABASE_URL).replace(/\?.*$/, ""), // Hapus parameter seperti ?sslmode=require
     ssl: { rejectUnauthorized: false }
   });
   pool.query(`
