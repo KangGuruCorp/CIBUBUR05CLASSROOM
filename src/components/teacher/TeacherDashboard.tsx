@@ -66,15 +66,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   if (!currentUser) return null;
 
-  const currentClass = classes.find((c) => c.id === currentClassId) || classes[0];
+    const currentClass = classes.find((c) => c.id === currentClassId) || classes[0];
   const classStudents = users.filter(
     (u) => u.role === 'student' && (u.classIds || []).includes(currentClassId)
   );
+  const currentClassStudentIds = new Set(classStudents.map(s => s.uid));
 
   // Pending grading submissions (deduplicated latest per assignment+student)
   const pendingSubMap = new Map<string, any>();
-  (Object.values(submissions) as any[])
-    .filter((s) => s && (s.status === 'submitted' || s.status === 'resubmitted') && s.assignmentId && s.userId)
+    (Object.values(submissions) as any[])
+    .filter((s) => s && (s.status === 'submitted' || s.status === 'resubmitted') && s.assignmentId && s.userId && currentClassStudentIds.has(s.userId))
     .forEach((s) => {
       const key = `${s.assignmentId}_${s.userId}`;
       const existing = pendingSubMap.get(key);
@@ -86,8 +87,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     .sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
 
   // Pending mission verifications
-  const pendingMissionsList = Object.entries(missionProgress)
-    .filter(([_, prog]: [string, any]) => prog && prog.status === 'pending_verification')
+    const pendingMissionsList = Object.entries(missionProgress)
+    .filter(([_, prog]: [string, any]) => prog && prog.status === 'pending_verification' && currentClassStudentIds.has(prog.userId))
     .map(([key, prog]: [string, any]) => {
       const student = users.find((u) => u.uid === prog.userId);
       const mission = missions.find((m) => m.id === prog.missionId);
@@ -96,7 +97,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     .filter((item) => item.student && item.mission);
 
   // Graded submissions for average score calculation
-  const gradedSubs = (Object.values(submissions) as any[]).filter((s) => s.status === 'graded');
+    const gradedSubs = (Object.values(submissions) as any[]).filter(
+    (s) => s.status === 'graded' && currentClassStudentIds.has(s.userId)
+  );
   const avgScore =
     gradedSubs.length > 0
       ? Math.round(gradedSubs.reduce((acc, curr) => acc + (curr.score || 0), 0) / gradedSubs.length)
@@ -535,5 +538,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     </div>
   );
 };
+
+
+
 
 
