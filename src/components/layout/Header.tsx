@@ -196,7 +196,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {currentUser.displayName}
                   </p>
                   <p className="text-[10px] font-semibold text-[#364FFF]">
-                    {currentRole === 'teacher' ? 'Guru Kelas' : `Absen #${currentUser.absentNumber || 1}`}
+                    {currentRole === 'admin' ? 'Administrator' : currentRole === 'teacher' ? 'Guru Kelas' : `Absen #`}
                   </p>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
@@ -218,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
                           {currentUser.displayName}
                         </p>
                         <p className="text-[11px] text-[#364FFF] font-semibold">
-                          {currentRole === 'teacher' ? 'Guru Kelas' : `Siswa (${currentClass.name})`}
+                          {currentRole === 'admin' ? 'Administrator Sistem' : currentRole === 'teacher' ? 'Guru Kelas' : `Siswa ()`}
                         </p>
                       </div>
                     </div>
@@ -267,3 +267,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

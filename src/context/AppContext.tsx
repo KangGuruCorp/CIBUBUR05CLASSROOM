@@ -864,11 +864,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     role: 'admin',
     status: 'active',
     displayName: 'Administrator',
-    searchName: 'administrator',
+    searchName: 'administrator admin',
     username: 'admin',
-    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
-    schoolId: 'sch_gami',
-    classIds: [],
+    password: 'admin',
+    avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin&backgroundColor=10b981',
+    schoolId: 'sch_merdeka_01',
+    classIds: ['cls_6a'],
   };
 
   const currentUser: User | null = data.currentUserId
@@ -1022,17 +1023,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const switchUser = (userId: string) => {
-    const target = data.users.find((u: User) => u.uid === userId);
+    let target = (data.users || []).find((u: User) => u.uid === userId);
+    if (!target && userId === 'admin') {
+      target = fallbackAdminUser;
+    }
     if (target) {
       try {
         safeSessionStorage.setItem(SESSION_USER_KEY, userId);
       } catch (e) {}
 
-      setData((prev: any) => ({
-        ...prev,
-        currentUserId: userId,
-        currentClassId: target.classIds?.[0] || prev.currentClassId,
-      }));
+      setData((prev: any) => {
+        const hasAdmin = (prev.users || []).some((u: User) => u.uid === 'admin');
+        const updatedUsers = hasAdmin ? prev.users : [fallbackAdminUser, ...(prev.users || [])];
+        return {
+          ...prev,
+          users: updatedUsers,
+          currentUserId: userId,
+          currentClassId: target.classIds?.[0] || prev.currentClassId || 'cls_6a',
+        };
+      });
       setActiveTab('beranda');
     }
   };
@@ -1040,6 +1049,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginUser = (identifier: string, pass: string, role: UserRole) => {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPass = pass.trim();
+
+    if (role === 'admin' || cleanId === 'admin') {
+      if (cleanPass === 'admin' || cleanPass === 'admin123') {
+        switchUser('admin');
+        return { success: true };
+      }
+    }
 
     const found = data.users.find((u: User) => {
       if (u.role !== role) return false;

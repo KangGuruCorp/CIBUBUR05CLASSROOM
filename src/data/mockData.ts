@@ -111,6 +111,21 @@ export const INITIAL_BADGES: Badge[] = [
 ];
 
 export const INITIAL_USERS: User[] = [
+  // Administrator
+  {
+    uid: 'admin',
+    role: 'admin',
+    status: 'active',
+    displayName: 'Administrator',
+    searchName: 'administrator admin',
+    username: 'admin',
+    password: 'admin',
+    avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin&backgroundColor=10b981',
+    schoolId: 'sch_merdeka_01',
+    classIds: ['cls_6a'],
+    createdAt: '2026-07-01T08:00:00.000Z',
+    updatedAt: '2026-07-01T08:00:00.000Z',
+  },
   // Teacher
   {
     uid: 'usr_guru_rahma',

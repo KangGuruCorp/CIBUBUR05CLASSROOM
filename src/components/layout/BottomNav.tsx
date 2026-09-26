@@ -34,7 +34,7 @@ export const BottomNav: React.FC = () => {
 
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  if (!currentUser) return null;
+  if (!currentUser || currentRole === 'admin') return null;
 
   const safeAssignments = assignments || [];
   const safeSubmissions = submissions || {};
