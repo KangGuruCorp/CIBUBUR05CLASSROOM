@@ -1321,9 +1321,50 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             </div>
           </div>
         )}
-      </div>
+        {/* Question Overlay Modal */}
+      {showQuestionOverlay && (
+        <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col p-4 sm:p-6 overflow-hidden">
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-black text-sm">
+                Soal #{currentQuestionIndex + 1}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQuestionOverlay(false)}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center gap-2 transition-colors shadow-lg cursor-pointer"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="hidden sm:inline">Kembali Memindai</span>
+              <span className="sm:hidden">Kembali</span>
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl">
+            <div className="text-xl sm:text-2xl font-extrabold text-white leading-relaxed">
+              <RichQuestionPrompt text={activeQuestion.prompt} fallbackImageUrl={activeQuestion.imageUrl} theme="dark" />
+            </div>
+
+            <div className={grid gap-3 mt-6 }>
+              {availableLetters.map((letter) => {
+                const optIdx = (['A', 'B', 'C', 'D'] as const).indexOf(letter);
+                const optionText = activeQuestion.options?.[optIdx] || '';
+                return (
+                  <div key={letter} className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-start gap-4">
+                    <span className="w-10 h-10 rounded-xl bg-slate-700 text-slate-300 font-black text-lg flex items-center justify-center shrink-0">
+                      {letter}
+                    </span>
+                    <div className="flex-1 text-sm sm:text-base font-bold text-white pt-1">
+                       <RichQuestionPrompt text={optionText} theme="dark" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-
