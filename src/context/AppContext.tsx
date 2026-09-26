@@ -110,6 +110,9 @@ interface AppContextType {
   }) => { success: boolean; message?: string };
   updateSchoolProfile: (updatedSchool: Partial<School>) => Promise<{ success: boolean; message?: string }>;
   changePassword: (newPass: string) => void;
+  addClass: (newClass: Omit<ClassRoom, 'id' | 'createdAt'>) => ClassRoom;
+  updateClass: (classId: string, updates: Partial<ClassRoom>) => void;
+  deleteClass: (classId: string) => void;
   
   // Student Actions
   markMaterialCompleted: (materialId: string) => void;
@@ -679,6 +682,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         });
         unsubList.push(unsubUsers);
+
+        const unsubClasses = subscribeToRealtimeCollection(COLLECTIONS.CLASSES, (items) => {
+          if (!isMounted) return;
+          setData((prev: any) => {
+            const classMap = new Map((prev.classes || []).map((c: any) => [c.id, c]));
+            items.forEach((c: any) => {
+              if (c && c.id) {
+                if (c.status === 'archived' && c._deleted) {
+                  classMap.delete(c.id);
+                } else {
+                  classMap.set(c.id, c);
+                }
+              }
+            });
+            return { ...prev, classes: Array.from(classMap.values()) };
+          });
+        });
+        unsubList.push(unsubClasses);
 
         const unsubUserStats = subscribeToRealtimeCollection(COLLECTIONS.USER_STATS, (items) => {
           if (!isMounted) return;
@@ -3578,6 +3599,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteDocFromFirestore(COLLECTIONS.CHAT_MESSAGES, messageId);
   };
 
+  const addClass = (newClass: Omit<ClassRoom, 'id' | 'createdAt'>) => {
+    const classId = `cls_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const created: ClassRoom = {
+      ...newClass,
+      id: classId,
+      schoolId: data.school?.id || 'sch_merdeka_01',
+      status: newClass.status || 'active',
+      teacherIds: newClass.teacherIds || [],
+      createdAt: new Date().toISOString(),
+    };
+
+    setData((prev: any) => ({
+      ...prev,
+      classes: [...(prev.classes || []), created],
+    }));
+
+    syncDocToFirestore(COLLECTIONS.CLASSES, classId, created);
+    return created;
+  };
+
+  const updateClass = (classId: string, updates: Partial<ClassRoom>) => {
+    setData((prev: any) => {
+      const updatedClasses = (prev.classes || []).map((c: ClassRoom) =>
+        c.id === classId ? { ...c, ...updates } : c
+      );
+      return { ...prev, classes: updatedClasses };
+    });
+
+    const existing = (data.classes || []).find((c: ClassRoom) => c.id === classId);
+    if (existing) {
+      syncDocToFirestore(COLLECTIONS.CLASSES, classId, { ...existing, ...updates });
+    }
+  };
+
+  const deleteClass = (classId: string) => {
+    setData((prev: any) => ({
+      ...prev,
+      classes: (prev.classes || []).filter((c: ClassRoom) => c.id !== classId),
+    }));
+
+    syncDocToFirestore(COLLECTIONS.CLASSES, classId, { id: classId, status: 'archived', _deleted: true });
+  };
+
   const resetToInitialData = async () => {
     try {
       safeStorage.removeItem(STORAGE_KEY);
@@ -3626,6 +3690,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserProfile,
         updateSchoolProfile,
         changePassword,
+        addClass,
+        updateClass,
+        deleteClass,
         markMaterialCompleted,
         submitAssignment,
         submitQuizAnswers,
