@@ -25,9 +25,9 @@ app.use('/api', (req, res, next) => {
 
 // Setup PostgreSQL
 let pool = null;
-if (process.env.POSTGRES_URL) {
+if ((process.env.POSTGRES_URL || process.env.DATABASE_URL)) {
   pool = new Pool({
-    connectionString: process.env.POSTGRES_URL,
+    connectionString: (process.env.POSTGRES_URL || process.env.DATABASE_URL),
     ssl: { rejectUnauthorized: false }
   });
   // Inisialisasi tabel jika belum ada
