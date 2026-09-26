@@ -67,7 +67,7 @@ export const TeacherLogin: React.FC<TeacherLoginProps> = ({ onSubmit, isLoading 
         ) : (
           <>
             <LogIn className="w-5 h-5" />
-            <span>Masuk sebagai Guru</span>
+            <span>Masuk</span>
             <ArrowRight className="w-4 h-4" />
           </>
         )}

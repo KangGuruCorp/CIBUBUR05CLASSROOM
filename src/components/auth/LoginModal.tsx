@@ -268,7 +268,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold text-sm shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <UserCheck className="w-4 h-4" />
-              <span>{isSubmitting ? 'Memverifikasi...' : 'Masuk Sekarang'}</span>
+              <span>{isSubmitting ? 'Memverifikasi...' : 'Masuk'}</span>
             </button>
           </form>
         </div>

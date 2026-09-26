@@ -470,13 +470,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
             className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>
-              {isProcessing
-                ? 'Memproses...'
-                : isTeacher
-                ? 'Simpan Profil Guru'
-                : 'Simpan Foto Profil'}
-            </span>
+            <span>{isProcessing ? 'Memproses...' : 'Simpan'}</span>
           </button>
         </div>
       </div>
@@ -496,5 +490,6 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
     </div>
   );
 };
+
 
 
