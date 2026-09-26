@@ -859,8 +859,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  const fallbackAdminUser: User = {
+    uid: 'admin',
+    role: 'admin',
+    status: 'active',
+    displayName: 'Administrator',
+    searchName: 'administrator',
+    username: 'admin',
+    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+    schoolId: 'sch_gami',
+    classIds: [],
+  };
+
   const currentUser: User | null = data.currentUserId
-    ? (data.users.find((u: User) => u.uid === data.currentUserId) || null)
+    ? (data.users.find((u: User) => u.uid === data.currentUserId) || (data.currentUserId === 'admin' ? fallbackAdminUser : null))
     : null;
   const currentRole: UserRole | null = currentUser?.role || null;
   const isAuthenticated: boolean = !!currentUser;
@@ -3659,6 +3671,7 @@ export const useApp = () => {
   }
   return context;
 };
+
 
 
 

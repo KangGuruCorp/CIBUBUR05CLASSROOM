@@ -34,6 +34,7 @@ import { TeacherAnnouncements } from './components/teacher/TeacherAnnouncements'
 import { TeacherReports } from './components/teacher/TeacherReports';
 import { TeacherAuditLogs } from './components/teacher/TeacherAuditLogs';
 import { TeacherQuizPage } from './components/teacher/quiz/TeacherQuizPage';
+import { AdminDashboard } from './components/admin/AdminDashboard';
 
 // Collaborative Board (Ruang Kolaborasi)
 import { CollabBoardPage } from './components/collab/CollabBoardPage';
@@ -269,3 +270,4 @@ export default function App() {
     </AppProvider>
   );
 }
+
