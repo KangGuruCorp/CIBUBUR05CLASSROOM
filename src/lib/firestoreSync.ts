@@ -136,6 +136,17 @@ export async function syncDocToFirestore(collection: string, docId: string, data
   }
 }
 
+export async function bulkDeleteFromFirestore(deletes: { collection: string, id: string }[]) {
+  deletes.forEach(d => removeDocFromCache(d.collection, d.id));
+  try {
+    await fetch('/api/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deletes })
+    });
+  } catch (err) {}
+}
+
 export async function deleteDocFromFirestore(collection: string, docId: string) {
   removeDocFromCache(collection, docId);
   try {
@@ -241,6 +252,7 @@ export async function controlPaperSession(sessionId: string, updates: any) {
 }
 
 export async function seedFirestoreIfEmpty() { return true; }
+
 
 
 

@@ -297,6 +297,25 @@ app.put('/api/collections/:collection/:id', async (req, res) => {
   res.json({ success: true, revision: finalDb._revision });
 });
 
+app.post('/api/bulk-delete', async (req, res) => {
+  const { deletes } = req.body;
+  if (!Array.isArray(deletes)) return res.json({ success: true });
+  
+  const finalDb = await modifyDb((db) => {
+    for (const { collection, id } of deletes) {
+      if (db[collection]) {
+        if (Array.isArray(db[collection])) {
+          db[collection] = db[collection].filter(item => item && item.id !== id && item.uid !== id);
+        } else {
+          delete db[collection][id];
+        }
+      }
+    }
+    return db;
+  });
+  res.json({ success: true, revision: finalDb._revision });
+});
+
 app.delete('/api/collections/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   const finalDb = await modifyDb((db) => {
@@ -536,6 +555,7 @@ app.get('/api/cleanup', async (req, res) => {
 });
 
 export default app;
+
 
 
 

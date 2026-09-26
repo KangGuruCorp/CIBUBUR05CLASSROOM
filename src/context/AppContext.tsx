@@ -49,6 +49,7 @@ import {
   seedFirestoreIfEmpty,
   syncDocToFirestore,
   deleteDocFromFirestore,
+  bulkDeleteFromFirestore,
   loadAllFromFirestore,
   subscribeToRealtimeCollection,
   syncAllStateToFirestore,
@@ -3403,10 +3404,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
+        const deletes: { collection: string, id: string }[] = [];
     userIds.forEach(userId => {
-      deleteDocFromFirestore(COLLECTIONS.USERS, userId);
-      deleteDocFromFirestore(COLLECTIONS.USER_STATS, userId);
+      deletes.push({ collection: COLLECTIONS.USERS, id: userId });
+      deletes.push({ collection: COLLECTIONS.USER_STATS, id: userId });
     });
+    bulkDeleteFromFirestore(deletes);
   };
 
   const resetStudentPassword = (userId: string): string => {
@@ -3658,4 +3661,6 @@ export const useApp = () => {
   }
   return context;
 };
+
+
 
