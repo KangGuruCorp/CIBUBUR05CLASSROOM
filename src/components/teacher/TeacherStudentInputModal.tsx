@@ -27,6 +27,7 @@ import {
   ParsedStudentRow,
 } from '../../utils/excelImport';
 import { ImageCropModal } from '../common/ImageCropModal';
+import { uploadDataUrlToServer } from '../../lib/fileUploadService';
 
 interface TeacherStudentInputModalProps {
   isOpen: boolean;
@@ -105,7 +106,7 @@ export const TeacherStudentInputModal: React.FC<TeacherStudentInputModalProps> =
   };
 
   // Handle Manual Submit
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setManualError('');
 
@@ -118,6 +119,11 @@ export const TeacherStudentInputModal: React.FC<TeacherStudentInputModalProps> =
     const absent = typeof absentNumber === 'number' ? absentNumber : 1;
     const cleanUsername = username.trim() || (nis ? `siswa_${nis}` : displayName.toLowerCase().replace(/[^a-z0-9]/g, '') + absent);
 
+    let finalAvatarUrl = avatarUrl.trim() || undefined;
+    if (finalAvatarUrl && finalAvatarUrl.startsWith('data:')) {
+      finalAvatarUrl = await uploadDataUrlToServer(finalAvatarUrl, `${cleanUsername}_photo.jpg`, 'avatars');
+    }
+
     provisionStudent({
       displayName: displayName.trim(),
       studentNumber: nis,
@@ -126,7 +132,7 @@ export const TeacherStudentInputModal: React.FC<TeacherStudentInputModalProps> =
       username: cleanUsername,
       password: password.trim() || '123456',
       email: email.trim() || undefined,
-      avatarUrl: avatarUrl.trim() || undefined,
+      avatarUrl: finalAvatarUrl,
     });
 
     // Reset Form

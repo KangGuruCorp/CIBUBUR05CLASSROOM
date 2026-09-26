@@ -13,6 +13,9 @@ import {
   MissionProgress,
   NotificationItem,
   PointLedger,
+  Quiz,
+  QuizSubmission,
+  QuizStudentAnswer,
   School,
   Submission,
   User,
@@ -33,6 +36,8 @@ import {
   INITIAL_MISSION_PROGRESS,
   INITIAL_MISSIONS,
   INITIAL_POINT_LEDGER,
+  INITIAL_QUIZZES,
+  INITIAL_QUIZ_SUBMISSIONS,
   INITIAL_SCHOOL,
   INITIAL_SUBMISSIONS,
   INITIAL_USERS,
@@ -54,7 +59,7 @@ import {
 } from '../lib/firestoreSync';
 import { safeStorage, safeSessionStorage } from '../utils/storage';
 
-const STORAGE_KEY = 'classroom_gamifikasi_v1_data';
+const STORAGE_KEY = 'classroom_gamifikasi_v2_data';
 const SESSION_USER_KEY = 'classroom_gamifikasi_session_user';
 
 interface AppContextType {
@@ -71,6 +76,8 @@ interface AppContextType {
   materialProgress: Record<string, MaterialProgress>;
   assignments: Assignment[];
   submissions: Record<string, Submission>;
+  quizzes: Quiz[];
+  quizSubmissions: Record<string, QuizSubmission>;
   missions: Mission[];
   missionProgress: Record<string, MissionProgress>;
   pointLedger: PointLedger[];
@@ -106,6 +113,7 @@ interface AppContextType {
   // Student Actions
   markMaterialCompleted: (materialId: string) => void;
   submitAssignment: (assignmentId: string, answerText: string, files: any[]) => void;
+  submitQuizAnswers: (quizId: string, answers: Record<string, QuizStudentAnswer>) => { success: boolean; submission: QuizSubmission };
   claimMissionReward: (missionId: string) => void;
   submitMissionForVerification: (missionId: string, note?: string, files?: any[]) => void;
   
@@ -120,7 +128,17 @@ interface AppContextType {
   deleteAssignment: (id: string) => void;
   saveAssignment: (asg: Partial<Assignment>) => void;
   
-  gradeSubmission: (submissionId: string, score: number, feedback: string, rewardPoints: number) => void;
+  createQuiz: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'schoolId'>) => void;
+  updateQuiz: (id: string, quiz: Partial<Quiz>) => void;
+  deleteQuiz: (id: string) => void;
+  saveQuiz: (quiz: Partial<Quiz>) => void;
+  gradeQuizSubmission: (
+    submissionId: string,
+    questionScores: Record<string, { earnedScore: number; feedback?: string; isCorrect?: boolean; isManualOverride?: boolean }>,
+    teacherFeedback?: string
+  ) => void;
+  
+  gradeSubmission: (submissionId: string, score: number, feedback: string, rewardPoints: number, rewardXp?: number) => void;
   requestRevision: (submissionId: string, feedback: string) => void;
   
   adjustStudentPoints: (userId: string, amount: number, category: 'academic' | 'participation' | 'adjustment', reason: string) => void;
@@ -196,15 +214,12 @@ function mergeLocalAndCloud(local: any, cloud: any) {
   if (!cloud) return local;
 
   const now = Date.now();
-  const dummyPrefixes = ['usr_budi_', 'usr_alya_', 'usr_raka_', 'usr_nadia_', 'usr_fajar_', 'usr_keisha_', 'usr_rizky_', 'usr_salsa_', 'usr_dimas_', 'usr_siti_', 'usr_kevin_'];
-  const isDummyUid = (uid: string) => dummyPrefixes.some((prefix) => uid.startsWith(prefix));
 
-  // 1. Merge Users: Cloud is authoritative if users exist in Firestore
+  // 1. Merge Users: Cloud is strictly authoritative
   const userMap = new Map<string, any>();
-  const cloudUsers = (cloud.users || []).filter((u: any) => u?.uid && !isDummyUid(u.uid));
+  const cloudUsers = (cloud.users || []).filter((u: any) => u?.uid);
   const cloudUids = new Set(cloudUsers.map((u: any) => u.uid));
 
-  // Add all valid cloud users
   cloudUsers.forEach((u: any) => {
     const localUser = (local.users || []).find((l: any) => l?.uid === u.uid);
     if (!localUser) {
@@ -212,52 +227,40 @@ function mergeLocalAndCloud(local: any, cloud: any) {
     } else {
       const cloudTime = new Date(u.updatedAt || u.createdAt || 0).getTime();
       const localTime = new Date(localUser.updatedAt || localUser.createdAt || 0).getTime();
-      userMap.set(u.uid, cloudTime >= localTime ? { ...localUser, ...u } : { ...u, ...localUser });
+      if (localTime > cloudTime && now - localTime < 3000) {
+        userMap.set(u.uid, { ...u, ...localUser });
+      } else {
+        userMap.set(u.uid, { ...localUser, ...u });
+      }
     }
   });
 
-  // Only retain local users that were created very recently (< 30s ago) and not yet synced, and NEVER dummy users
   if (cloudUids.size > 0) {
     (local.users || []).forEach((u: any) => {
-      if (!u?.uid || cloudUids.has(u.uid) || isDummyUid(u.uid)) return;
+      if (!u?.uid || cloudUids.has(u.uid)) return;
       const created = new Date(u.createdAt || 0).getTime();
-      if (now - created < 30000) {
+      if (now - created < 15000) {
         userMap.set(u.uid, u);
       }
     });
   } else {
-    // If cloud had literally 0 users, use clean local users (excluding dummy users)
     (local.users || []).forEach((u: any) => {
-      if (u?.uid && !isDummyUid(u.uid)) userMap.set(u.uid, u);
+      if (u?.uid) userMap.set(u.uid, u);
     });
   }
 
-  // Ensure default teacher profile is Teguh Firmansyah Apriliana, M.Pd
-  Array.from(userMap.entries()).forEach(([uid, u]) => {
-    if (u.role === 'teacher' && (!u.displayName || u.displayName.includes('Rahmawati') || uid === 'usr_guru_rahma')) {
-      userMap.set(uid, {
-        ...u,
-        displayName: 'Teguh Firmansyah Apriliana, M.Pd',
-        searchName: 'teguh firmansyah apriliana guru wali kelas 6e',
-        username: u.username && !u.username.includes('rahma') ? u.username : 'guru.teguh',
-        email: u.email && !u.email.includes('rahma') ? u.email : 'teguh.april92@gmail.com',
-        avatarUrl: u.avatarUrl && !u.avatarUrl.includes('GuruRahma') ? u.avatarUrl : 'https://api.dicebear.com/7.x/bottts/svg?seed=TeguhFirmansyah&backgroundColor=b6e3f4',
-      });
-    }
-  });
-
-  // 2. Merge User Stats - only for users that exist in userMap
+  // 2. Merge User Stats
   const mergedStats: Record<string, any> = {};
   if (cloud.userStats) {
     Object.entries(cloud.userStats).forEach(([uid, cStats]: [string, any]) => {
-      if (userMap.has(uid) && !isDummyUid(uid)) {
+      if (userMap.has(uid)) {
         mergedStats[uid] = cStats;
       }
     });
   }
   if (local.userStats) {
     Object.entries(local.userStats).forEach(([uid, lStats]: [string, any]) => {
-      if (userMap.has(uid) && !mergedStats[uid] && !isDummyUid(uid)) {
+      if (userMap.has(uid) && !mergedStats[uid]) {
         mergedStats[uid] = lStats;
       }
     });
@@ -273,38 +276,32 @@ function mergeLocalAndCloud(local: any, cloud: any) {
     }
   });
 
-  // 4. Merge Materials: Cloud is authoritative when cloud.materials is loaded (is an Array)
-  const dummyMaterialIds = new Set(['mat_01_ipa_tatasurya', 'mat_02_mtk_pecahan', 'mat_03_bindo_teks_eksplanasi']);
+  // 4. Merge Materials: Cloud is authoritative
   let mergedMaterials: any[] = [];
   if (Array.isArray(cloud.materials)) {
     const cloudIds = new Set(cloud.materials.map((m: any) => m.id));
     const pendingLocal = (local.materials || []).filter((m: any) => {
-      if (!m?.id || cloudIds.has(m.id) || dummyMaterialIds.has(m.id)) return false;
+      if (!m?.id || cloudIds.has(m.id)) return false;
       const created = new Date(m.createdAt || 0).getTime();
-      return now - created < 20000;
+      return now - created < 10000;
     });
     mergedMaterials = sortItemsNewestFirst([...cloud.materials, ...pendingLocal]);
   } else {
-    mergedMaterials = sortItemsNewestFirst(
-      (local.materials || []).filter((m: any) => !dummyMaterialIds.has(m?.id))
-    );
+    mergedMaterials = sortItemsNewestFirst(local.materials || []);
   }
 
-  // 5. Merge Assignments: Cloud is authoritative when cloud.assignments is loaded (is an Array)
-  const dummyAssignmentIds = new Set(['asg_01_ipa_proyek_planet', 'asg_02_mtk_latihan_pecahan', 'asg_03_bindo_analisis_eksplanasi']);
+  // 5. Merge Assignments: Cloud is authoritative, keeping recent pending local assignments
   let mergedAssignments: any[] = [];
   if (Array.isArray(cloud.assignments)) {
     const cloudIds = new Set(cloud.assignments.map((a: any) => a.id));
     const pendingLocal = (local.assignments || []).filter((a: any) => {
-      if (!a?.id || cloudIds.has(a.id) || dummyAssignmentIds.has(a.id)) return false;
+      if (!a?.id || cloudIds.has(a.id)) return false;
       const created = new Date(a.createdAt || 0).getTime();
-      return now - created < 20000;
+      return now - created < 15000;
     });
     mergedAssignments = sortItemsNewestFirst([...cloud.assignments, ...pendingLocal]);
   } else {
-    mergedAssignments = sortItemsNewestFirst(
-      (local.assignments || []).filter((a: any) => !dummyAssignmentIds.has(a?.id))
-    );
+    mergedAssignments = sortItemsNewestFirst(local.assignments || []);
   }
 
   // 6. Merge Submissions with timestamp comparison and resilient cross-keying
@@ -329,21 +326,18 @@ function mergeLocalAndCloud(local: any, cloud: any) {
     });
   }
 
-  // 7. Merge Missions: Cloud is authoritative when cloud.missions is loaded (is an Array)
-  const dummyMissionIds = new Set(['mis_01_read_materials', 'mis_02_early_submission', 'mis_03_active_helper']);
+  // 7. Merge Missions: Cloud is authoritative
   let mergedMissions: any[] = [];
   if (Array.isArray(cloud.missions)) {
     const cloudIds = new Set(cloud.missions.map((m: any) => m.id));
     const pendingLocal = (local.missions || []).filter((m: any) => {
-      if (!m?.id || cloudIds.has(m.id) || dummyMissionIds.has(m.id)) return false;
+      if (!m?.id || cloudIds.has(m.id)) return false;
       const created = new Date(m.createdAt || 0).getTime();
-      return now - created < 20000;
+      return now - created < 15000;
     });
     mergedMissions = sortItemsNewestFirst([...cloud.missions, ...pendingLocal]);
   } else {
-    mergedMissions = sortItemsNewestFirst(
-      (local.missions || []).filter((m: any) => !dummyMissionIds.has(m?.id))
-    );
+    mergedMissions = sortItemsNewestFirst(local.missions || []);
   }
 
   // 8. Progress with timestamp comparison and resilient cross-keying
@@ -395,13 +389,52 @@ function mergeLocalAndCloud(local: any, cloud: any) {
     }
   });
 
-  // 10. Point Ledger
+  // 10. Point Ledger with deduplication by idempotencyKey || id
   const ledgerMap = new Map<string, any>();
-  (local.pointLedger || []).forEach((pl: any) => { if (pl?.id) ledgerMap.set(pl.id, pl); });
-  (cloud.pointLedger || []).forEach((pl: any) => { if (pl?.id) ledgerMap.set(pl.id, pl); });
+  const seenLedgerKeys = new Set<string>();
+  const addLedgerEntry = (pl: any) => {
+    if (!pl || !pl.id) return;
+    const key = pl.idempotencyKey || pl.id;
+    if (!seenLedgerKeys.has(key)) {
+      seenLedgerKeys.add(key);
+      ledgerMap.set(pl.id, pl);
+    }
+  };
+  (cloud.pointLedger || []).forEach(addLedgerEntry);
+  (local.pointLedger || []).forEach(addLedgerEntry);
   const mergedLedger = Array.from(ledgerMap.values()).sort(
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
+
+  // Reconcile userStats with mergedLedger to ensure 100% mathematical consistency
+  const ledgerByUser = new Map<string, any[]>();
+  mergedLedger.forEach((pl: any) => {
+    if (!pl?.userId) return;
+    const list = ledgerByUser.get(pl.userId) || [];
+    list.push(pl);
+    ledgerByUser.set(pl.userId, list);
+  });
+
+  Object.keys(mergedStats).forEach((uid) => {
+    const studentLedgers = ledgerByUser.get(uid);
+    if (studentLedgers && studentLedgers.length > 0) {
+      const ledgerTotal = Math.max(0, studentLedgers.reduce((sum, l) => sum + (Number(l.amount) || 0), 0));
+      const academicTotal = Math.max(0, studentLedgers.filter((l) => l.category === 'academic').reduce((sum, l) => sum + (Number(l.amount) || 0), 0));
+      const partTotal = Math.max(0, ledgerTotal - academicTotal);
+      const totalXp = studentLedgers.reduce((sum, l) => {
+        const val = l.xpAmount !== undefined ? l.xpAmount : l.amount;
+        return sum + (val > 0 ? Number(val) : 0);
+      }, 0);
+
+      mergedStats[uid] = {
+        ...mergedStats[uid],
+        totalPoints: ledgerTotal,
+        academicPoints: academicTotal,
+        participationPoints: partTotal,
+        totalXp: Math.max(mergedStats[uid]?.totalXp || 0, totalXp),
+      };
+    }
+  });
 
   // 11. Chat Messages
   const chatMap = new Map<string, any>();
@@ -438,36 +471,43 @@ function mergeLocalAndCloud(local: any, cloud: any) {
     materials: mergedMaterials,
     materialProgress: mergedMatProg,
     assignments: mergedAssignments,
-    submissions: cloud.submissions
-      ? Object.fromEntries(
-          Object.entries(mergedSubmissions).filter(
-            ([_, sub]: [string, any]) => sub?.userId && userMap.has(sub.userId) && !isDummyUid(sub.userId)
-          )
-        )
-      : {},
+    submissions: mergedSubmissions,
     missions: mergedMissions,
-    missionProgress: cloud.missionProgress
-      ? Object.fromEntries(
-          Object.entries(mergedMisProg).filter(
-            ([_, prog]: [string, any]) => prog?.userId && userMap.has(prog.userId) && !isDummyUid(prog.userId)
-          )
-        )
-      : {},
+    missionProgress: mergedMisProg,
     announcements: Array.from(annMap.values()),
-    pointLedger: (cloud.pointLedger || []).filter((pl: any) => pl?.userId && userMap.has(pl.userId) && !isDummyUid(pl.userId)),
-    chatMessages: mergedChat.length > 0 ? mergedChat : (local.chatMessages || INITIAL_CHAT_MESSAGES),
+    pointLedger: mergedLedger,
+    chatMessages: mergedChat,
+    // 13. Quizzes
+    quizzes: Array.isArray(cloud.quizzes)
+      ? sortItemsNewestFirst([
+          ...cloud.quizzes,
+          ...(local.quizzes || []).filter((q: any) => {
+            if (!q?.id || cloud.quizzes.some((cq: any) => cq.id === q.id)) return false;
+            return now - new Date(q.createdAt || 0).getTime() < 10000;
+          }),
+        ])
+      : sortItemsNewestFirst(local.quizzes || []),
+
+    // 14. Quiz Submissions
+    quizSubmissions: {
+      ...(local.quizSubmissions || {}),
+      ...(cloud.quizSubmissions || {}),
+    },
+
     badges: cloud.badges && cloud.badges.length > 0 ? cloud.badges : local.badges,
-    userBadges: (cloud.userBadges || []).filter((b: any) => b?.userId && userMap.has(b.userId) && !isDummyUid(b.userId)),
+    userBadges: (cloud.userBadges || []).filter((b: any) => b?.userId && userMap.has(b.userId)),
     notifications: mergedNotifs.length > 0 ? mergedNotifs : (local.notifications || []),
   };
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const deletedItemIds = useRef<Set<string>>(new Set());
+  
   // Load initial from storage or defaults
   const [data, setData] = useState(() => {
     let sessionUserId: string | null = null;
     try {
-      sessionUserId = safeSessionStorage.getItem(SESSION_USER_KEY);
+      sessionUserId = safeSessionStorage.getItem(SESSION_USER_KEY) || safeStorage.getItem(SESSION_USER_KEY);
     } catch (e) {}
 
     let saved: string | null = null;
@@ -477,111 +517,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Ensure classes reflect Kelas 6E
-        const updatedClasses = (parsed.classes || INITIAL_CLASSES).map((cls: any) =>
-          cls.id === 'cls_6a' || cls.name?.includes('6A') ? { ...cls, name: 'Kelas 6E' } : cls
-        );
-        // Ensure teacher user reflects Teguh Firmansyah Apriliana, M.Pd
-        const updatedUsers = (parsed.users || INITIAL_USERS).map((u: any) => {
-          if (u.role === 'teacher' && (!u.displayName || u.displayName.includes('Rahmawati') || u.uid === 'usr_guru_rahma')) {
-            return {
-              ...u,
-              displayName: 'Teguh Firmansyah Apriliana, M.Pd',
-              searchName: 'teguh firmansyah apriliana guru wali kelas 6e',
-              username: u.username && !u.username.includes('rahma') ? u.username : 'guru.teguh',
-              email: u.email && !u.email.includes('rahma') ? u.email : 'teguh.april92@gmail.com',
-              avatarUrl: u.avatarUrl && !u.avatarUrl.includes('GuruRahma') ? u.avatarUrl : 'https://api.dicebear.com/7.x/bottts/svg?seed=TeguhFirmansyah&backgroundColor=b6e3f4',
-            };
+        Object.keys(parsed).forEach(k => {
+          if (Array.isArray(parsed[k])) {
+            parsed[k] = parsed[k].filter((i: any) => i);
           }
-          return u;
         });
-        const updatedSchool = parsed.school ? { ...parsed.school } : { ...INITIAL_SCHOOL };
-        if (updatedSchool.logoUrl && updatedSchool.logoUrl.includes('images.unsplash.com')) {
-          updatedSchool.logoUrl = '';
-        }
-        const cleanMaterials = sortItemsNewestFirst(
-          (parsed.materials || []).filter(
-            (m: any) => !['mat_01_ipa_tatasurya', 'mat_02_mtk_pecahan', 'mat_03_bindo_teks_eksplanasi'].includes(m?.id)
-          )
-        );
-        const cleanAssignments = sortItemsNewestFirst(
-          (parsed.assignments || []).filter(
-            (a: any) => !['asg_01_ipa_proyek_planet', 'asg_02_mtk_latihan_pecahan', 'asg_03_bindo_analisis_eksplanasi'].includes(a?.id)
-          )
-        );
-        const cleanMissions = sortItemsNewestFirst(
-          (parsed.missions || []).filter(
-            (ms: any) => !['mis_01_read_materials', 'mis_02_early_submission', 'mis_03_active_helper'].includes(ms?.id)
-          )
-        );
 
         return {
-          ...parsed,
-          users: updatedUsers,
-          school: updatedSchool,
-          classes: updatedClasses,
-          materials: cleanMaterials,
-          assignments: cleanAssignments,
-          missions: cleanMissions,
-          chatMessages: parsed.chatMessages && parsed.chatMessages.length > 0 ? parsed.chatMessages : INITIAL_CHAT_MESSAGES,
-          currentUserId: sessionUserId || null, // null by default when opening fresh link
+          users: parsed.users || [],
+          school: parsed.school || INITIAL_SCHOOL,
+          classes: parsed.classes || INITIAL_CLASSES,
+          materials: sortItemsNewestFirst(parsed.materials || []),
+          materialProgress: parsed.materialProgress || {},
+          assignments: sortItemsNewestFirst(parsed.assignments || []),
+          submissions: parsed.submissions || {},
+          quizzes: sortItemsNewestFirst(parsed.quizzes || []),
+          quizSubmissions: parsed.quizSubmissions || {},
+          missions: sortItemsNewestFirst(parsed.missions || []),
+          missionProgress: parsed.missionProgress || {},
+          pointLedger: parsed.pointLedger || [],
+          userStats: parsed.userStats || {},
+          badges: parsed.badges || INITIAL_BADGES,
+          userBadges: parsed.userBadges || [],
+          announcements: parsed.announcements || [],
+          auditLogs: parsed.auditLogs || [],
+          chatMessages: parsed.chatMessages || [],
+          notifications: parsed.notifications || [],
+          currentUserId: sessionUserId || null,
+          currentClassId: parsed.currentClassId || 'cls_6a',
         };
       } catch (e) {
         console.error('Failed to parse stored state', e);
       }
     }
     return {
-      users: INITIAL_USERS,
+      users: [],
       school: INITIAL_SCHOOL,
-      classes: INITIAL_CLASSES,
-      materials: INITIAL_MATERIALS,
-      materialProgress: INITIAL_MATERIAL_PROGRESS,
-      assignments: INITIAL_ASSIGNMENTS,
-      submissions: INITIAL_SUBMISSIONS,
-      missions: INITIAL_MISSIONS,
-      missionProgress: INITIAL_MISSION_PROGRESS,
-      pointLedger: INITIAL_POINT_LEDGER,
-      userStats: INITIAL_USER_STATS,
+      classes: [],
+      materials: [],
+      materialProgress: {},
+      assignments: [],
+      submissions: {},
+      quizzes: [],
+      quizSubmissions: {},
+      missions: [],
+      missionProgress: {},
+      pointLedger: [],
+      userStats: {},
       badges: INITIAL_BADGES,
-      userBadges: INITIAL_USER_BADGES,
-      announcements: INITIAL_ANNOUNCEMENTS,
-      auditLogs: INITIAL_AUDIT_LOGS,
-      chatMessages: INITIAL_CHAT_MESSAGES,
-      notifications: [
-        {
-          id: 'notif_init_01',
-          userId: 'usr_budi_01',
-          title: 'Tugas Baru Diterbitkan',
-          message: 'Teguh Firmansyah Apriliana, M.Pd menerbitkan tugas "Poster Karakteristik Planet Favorit".',
-          type: 'assignment',
-          targetTab: 'tugas',
-          targetId: 'asg_01_ipa_proyek_planet',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'notif_init_02',
-          userId: 'usr_budi_01',
-          title: 'Nilai Tugas Keluar!',
-          message: 'Tugas Matematika Pecahan dinilai: 95. Kamu dapat +50 Poin!',
-          type: 'grade',
-          targetTab: 'tugas',
-          targetId: 'asg_02_mtk_latihan_pecahan',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        },
-      ] as NotificationItem[],
-      currentUserId: sessionUserId || null, // start at login page
+      userBadges: [],
+      announcements: [],
+      auditLogs: [],
+      chatMessages: [],
+      notifications: [] as NotificationItem[],
+      currentUserId: sessionUserId || null,
       currentClassId: 'cls_6a',
     };
   });
-
+  
   const [activeTab, setActiveTab] = useState<string>('beranda');
   const [isFirebaseSynced, setIsFirebaseSynced] = useState<boolean>(false);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState<boolean>(() => isFirestoreQuotaExceeded());
   const [userPresences, setUserPresences] = useState<Record<string, UserPresence>>({});
+  const isSavingRef = useRef<boolean>(false);
   const hasLoadedCloudRef = useRef(false);
 
+  // 1. Initial State Load (runs synchronously on first render)
   useEffect(() => {
     const handleQuota = (e: any) => {
       setIsQuotaExceeded(Boolean(e.detail?.exceeded));
@@ -602,7 +603,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsFirebaseSynced(true);
         }
 
-        // Fetch latest data from Firestore to keep state strictly online synced
         const cloudData = await loadAllFromFirestore();
         if (isMounted && cloudData) {
           setData((prev: any) => {
@@ -632,14 +632,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const unsubAssignments = subscribeToRealtimeCollection(COLLECTIONS.ASSIGNMENTS, (items) => {
           if (!isMounted) return;
-          const sorted = sortItemsNewestFirst((items || []) as Assignment[]);
+          const sorted = sortItemsNewestFirst((items || []) as Assignment[]).filter(a => !deletedItemIds.current.has(a.id));
           setData((prev: any) => ({ ...prev, assignments: sorted }));
         });
         unsubList.push(unsubAssignments);
 
         const unsubMaterials = subscribeToRealtimeCollection(COLLECTIONS.MATERIALS, (items) => {
           if (!isMounted) return;
-          const sorted = sortItemsNewestFirst((items || []) as Material[]);
+          const sorted = sortItemsNewestFirst((items || []) as Material[]).filter(a => !deletedItemIds.current.has(a.id));
           setData((prev: any) => ({ ...prev, materials: sorted }));
         });
         unsubList.push(unsubMaterials);
@@ -663,7 +663,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
             const merged = items.map((cloudUser: any) => {
               const local = (prev.users || []).find((u: any) => u.uid === cloudUser.uid);
-              return local ? { ...local, ...cloudUser } : cloudUser;
+              if (local) {
+                const cloudTime = new Date(cloudUser.updatedAt || cloudUser.createdAt || 0).getTime();
+                const localTime = new Date(local.updatedAt || local.createdAt || 0).getTime();
+                if (localTime > cloudTime && now - localTime < 5000) {
+                  return { ...cloudUser, ...local };
+                }
+                return { ...local, ...cloudUser };
+              }
+              return cloudUser;
             });
             return { ...prev, users: [...merged, ...pendingLocal] };
           });
@@ -732,7 +740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const unsubMissions = subscribeToRealtimeCollection(COLLECTIONS.MISSIONS, (items) => {
           if (!isMounted) return;
-          const sorted = sortItemsNewestFirst((items || []) as Mission[]);
+          const sorted = sortItemsNewestFirst((items || []) as Mission[]).filter(a => !deletedItemIds.current.has(a.id));
           setData((prev: any) => ({ ...prev, missions: sorted }));
         });
         unsubList.push(unsubMissions);
@@ -749,6 +757,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         });
         unsubList.push(unsubUserBadges);
+
+        const unsubQuizzes = subscribeToRealtimeCollection(COLLECTIONS.QUIZZES, (items) => {
+          if (!isMounted) return;
+          const sorted = sortItemsNewestFirst((items || []) as Quiz[]).filter(q => !deletedItemIds.current.has(q.id));
+          setData((prev: any) => ({ ...prev, quizzes: sorted }));
+        });
+        unsubList.push(unsubQuizzes);
+
+        const unsubQuizSubmissions = subscribeToRealtimeCollection(COLLECTIONS.QUIZ_SUBMISSIONS, (items) => {
+          if (!isMounted || !items.length) return;
+          setData((prev: any) => {
+            const updated = { ...prev.quizSubmissions };
+            items.forEach((sub: any) => {
+              if (sub.id) updated[sub.id] = sub;
+              if (sub.quizId && sub.userId) updated[`${sub.quizId}_${sub.userId}`] = sub;
+            });
+            return { ...prev, quizSubmissions: updated };
+          });
+        });
+        unsubList.push(unsubQuizSubmissions);
 
         const unsubChat = subscribeToRealtimeCollection(COLLECTIONS.CHAT_MESSAGES, (items) => {
           if (!isMounted) return;
@@ -937,13 +965,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Save to local storage on change
+  // Debounced save to local storage (runs at most once every 1000ms, never blocking UI)
   useEffect(() => {
-    try {
-      safeStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.warn('Storage quota exceeded or unavailable', e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        const cacheSnapshot = {
+          school: data.school,
+          classes: data.classes,
+          currentClassId: data.currentClassId,
+          users: (data.users || []).map((u: any) => ({
+            uid: u.uid,
+            displayName: u.displayName,
+            role: u.role,
+            avatarUrl: u.avatarUrl,
+            studentNumber: u.studentNumber,
+            absentNumber: u.absentNumber,
+            classIds: u.classIds,
+          })),
+          assignments: data.assignments,
+          materials: data.materials,
+          quizzes: data.quizzes,
+          missions: data.missions,
+          userStats: data.userStats,
+        };
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(cacheSnapshot));
+      } catch (e) {
+        console.warn('Storage cache error:', e);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [data]);
 
   // Pastikan siswa selalu berada di kelas tempat ia terdaftar dan tidak dapat memilih kelas lain
@@ -1175,12 +1226,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // Helper to safely update stats & level
+  // Helper to safely update stats, totalPoints (Leaderboard) & totalXp (Leveling)
   const recalculateUserStats = (
     currentStatsMap: Record<string, UserStats>,
     userId: string,
     pointsDelta: number,
-    category: 'academic' | 'participation' | 'mission' | 'adjustment'
+    category: 'academic' | 'participation' | 'mission' | 'adjustment',
+    xpDelta: number = 0
   ): Record<string, UserStats> => {
     const user = data.users.find((u: User) => u.uid === userId);
     const existing = currentStatsMap[userId] || {
@@ -1188,6 +1240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       schoolId: user?.schoolId || INITIAL_SCHOOL.id,
       classId: user?.classIds?.[0] || 'cls_6a',
       totalPoints: 0,
+      totalXp: 0,
       academicPoints: 0,
       participationPoints: 0,
       level: 1,
@@ -1197,25 +1250,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
 
-    const newTotal = Math.max(0, existing.totalPoints + pointsDelta);
-    let newAcademic = existing.academicPoints;
-    let newParticipation = existing.participationPoints;
+    const newTotalPoints = Math.max(0, (existing.totalPoints || 0) + pointsDelta);
+    // XP is strictly non-negative and cumulative for leveling
+    const currentXp = existing.totalXp !== undefined ? existing.totalXp : (existing.totalPoints || 0);
+    const newTotalXp = Math.max(0, currentXp + Math.max(0, xpDelta));
 
+    let newAcademic = existing.academicPoints || 0;
     if (category === 'academic') {
       newAcademic = Math.max(0, newAcademic + pointsDelta);
-    } else {
-      newParticipation = Math.max(0, newParticipation + pointsDelta);
     }
+    // Participation points balances totalPoints so that academicPoints + participationPoints === totalPoints
+    const newParticipation = Math.max(0, newTotalPoints - newAcademic);
 
-    const { currentLevel } = getLevelInfo(newTotal, DEFAULT_LEVELS);
-    const prevLevel = existing.level;
+    // Level is calculated from XP
+    const { currentLevel } = getLevelInfo(newTotalXp, DEFAULT_LEVELS);
+    const prevLevel = existing.level || 1;
 
     if (currentLevel.level > prevLevel && currentUser && userId === currentUser.uid) {
       fireCelebrationConfetti('level_up');
       addNotification(
         userId,
         `🎉 Selamat! Kamu Naik ke Level ${currentLevel.level}`,
-        `Hebat! Kamu sekarang bergelar "${currentLevel.name}". Terus kumpulkan poin untuk tantangan berikutnya!`,
+        `Hebat! Kamu sekarang bergelar "${currentLevel.name}". Terus kumpulkan XP untuk naik level dan Poin untuk leaderboard!`,
         'point'
       );
     }
@@ -1224,7 +1280,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...currentStatsMap,
       [userId]: {
         ...existing,
-        totalPoints: newTotal,
+        totalPoints: newTotalPoints,
+        totalXp: newTotalXp,
         academicPoints: newAcademic,
         participationPoints: newParticipation,
         level: currentLevel.level,
@@ -1259,15 +1316,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const targetMat = prev.materials.find((m: Material) => m.id === materialId);
       const pointsEarned = targetMat?.rewardPoints ?? 20;
+      const xpEarned = targetMat?.rewardXp ?? (targetMat?.rewardPoints ?? 25);
 
-      if (!alreadyCompleted && pointsEarned > 0) {
-        // Award points to student
+      if (!alreadyCompleted && (pointsEarned > 0 || xpEarned > 0)) {
+        // Award points & XP to student
         const ledgerEntry: PointLedger = {
           id: `led_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           schoolId: data.school.id,
           classId: data.currentClassId,
           userId: currentUser.uid,
           amount: pointsEarned,
+          xpAmount: xpEarned,
           category: 'participation',
           sourceType: 'material',
           sourceId: materialId,
@@ -1278,13 +1337,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           createdAt: now,
         };
         updatedLedger = [ledgerEntry, ...updatedLedger];
-        updatedStats = recalculateUserStats(prev.userStats, currentUser.uid, pointsEarned, 'participation');
+        updatedStats = recalculateUserStats(prev.userStats, currentUser.uid, pointsEarned, 'participation', xpEarned);
 
         fireCelebrationConfetti('level_up');
         addNotification(
           currentUser.uid,
-          '⭐ Poin Materi Diperoleh!',
-          `Hebat! Kamu telah menuntaskan modul "${targetMat?.title || 'Materi'}" dan mendapatkan +${pointsEarned} Poin!`,
+          '⭐ Reward Materi Diperoleh!',
+          `Hebat! Kamu telah menuntaskan modul "${targetMat?.title || 'Materi'}" dan mendapatkan +${pointsEarned} Poin & +${xpEarned} XP!`,
           'material',
           'materi'
         );
@@ -1375,20 +1434,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (m: Mission) => m.type === 'material' && m.status === 'active'
     );
     if (activeMaterialMission) {
-      const misKey = `${activeMaterialMission.id}_${currentUser.uid}_w1`;
+      const pKey = activeMaterialMission.repeat === 'once' ? 'once' : 'w1';
+      const misKey = `${activeMaterialMission.id}_${currentUser.uid}_${pKey}`;
       const currentMProg = data.missionProgress[misKey]?.progress || 0;
       const newProg = Math.min(activeMaterialMission.target, currentMProg + 1);
       const isDone = newProg >= activeMaterialMission.target;
-      syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, {
+      const requiresTeacherVerification = activeMaterialMission.rewardMode === 'manual_verification';
+      const targetStatus: MissionProgress['status'] = isDone
+        ? (requiresTeacherVerification ? 'pending_verification' : 'completed')
+        : 'in_progress';
+
+      const progData: MissionProgress = {
+        id: misKey,
         missionId: activeMaterialMission.id,
         userId: currentUser.uid,
         classId: data.currentClassId,
-        periodKey: 'w1',
+        periodKey: pKey,
         progress: newProg,
-        status: isDone ? 'completed' : 'in_progress',
-        completedAt: isDone ? now : undefined,
+        status: targetStatus,
+        completedAt: isDone && !requiresTeacherVerification ? now : undefined,
+        submittedAt: isDone && requiresTeacherVerification ? now : undefined,
         updatedAt: now,
-      });
+      };
+
+      syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, progData);
+      syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, `${activeMaterialMission.id}_${currentUser.uid}`, progData);
+
+      setData((prev: any) => ({
+        ...prev,
+        missionProgress: {
+          ...prev.missionProgress,
+          [misKey]: progData,
+          [`${activeMaterialMission.id}_${currentUser.uid}`]: progData,
+          [`${activeMaterialMission.id}_${currentUser.uid}_w1`]: progData,
+          [`${activeMaterialMission.id}_${currentUser.uid}_once`]: progData,
+        },
+      }));
+
+      if (isDone && requiresTeacherVerification) {
+        const teachers = data.users.filter((u: User) => u.role === 'teacher');
+        teachers.forEach((t: User) => {
+          addNotification(
+            t.uid,
+            `📥 Misi Perlu Diverifikasi: ${activeMaterialMission.title}`,
+            `${currentUser.displayName} telah menyelesaikan target materi untuk misi "${activeMaterialMission.title}". Siap untuk diperiksa & dinilai guru.`,
+            'mission',
+            'misi',
+            activeMaterialMission.id
+          );
+        });
+      }
     }
   };
 
@@ -1422,30 +1517,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     fireCelebrationConfetti('submission');
 
+    const isFirstSubmission = !existingSub || !existingSub.submittedAt;
     let updatedMissionsProg = { ...data.missionProgress };
-    // Update mission progress for assignment submission
-    const assignmentMissions = data.missions.filter((m: Mission) => m.type === 'assignment' && m.status === 'active');
-    assignmentMissions.forEach((mis: Mission) => {
-      const pKey = mis.repeat === 'once' ? 'once' : 'w1';
-      const misKey = `${mis.id}_${currentUser.uid}_${pKey}`;
-      const currentProg = data.missionProgress[misKey]?.progress || 0;
-      const newProg = Math.min(mis.target, currentProg + 1);
-      const isDone = newProg >= mis.target;
-      const progData: MissionProgress = {
-        id: misKey,
-        missionId: mis.id,
-        userId: currentUser.uid,
-        classId: resolvedClassId,
-        periodKey: pKey,
-        progress: newProg,
-        status: isDone ? 'completed' : 'in_progress',
-        completedAt: isDone ? now : undefined,
-        updatedAt: now,
-      };
-      updatedMissionsProg[misKey] = progData;
-      updatedMissionsProg[`${mis.id}_${currentUser.uid}`] = progData;
-      syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, progData);
-    });
+    if (isFirstSubmission) {
+      // Update mission progress for assignment submission
+      const assignmentMissions = data.missions.filter((m: Mission) => m.type === 'assignment' && m.status === 'active');
+      assignmentMissions.forEach((mis: Mission) => {
+        const pKey = mis.repeat === 'once' ? 'once' : 'w1';
+        const misKey = `${mis.id}_${currentUser.uid}_${pKey}`;
+        const currentProg = data.missionProgress[misKey]?.progress || 0;
+        const newProg = Math.min(mis.target, currentProg + 1);
+        const isDone = newProg >= mis.target;
+        const requiresTeacherVerification = mis.rewardMode === 'manual_verification';
+        const targetStatus: MissionProgress['status'] = isDone
+          ? (requiresTeacherVerification ? 'pending_verification' : 'completed')
+          : 'in_progress';
+
+        const progData: MissionProgress = {
+          id: misKey,
+          missionId: mis.id,
+          userId: currentUser.uid,
+          classId: resolvedClassId,
+          periodKey: pKey,
+          progress: newProg,
+          status: targetStatus,
+          completedAt: isDone && !requiresTeacherVerification ? now : undefined,
+          submittedAt: isDone && requiresTeacherVerification ? now : undefined,
+          updatedAt: now,
+        };
+        updatedMissionsProg[misKey] = progData;
+        updatedMissionsProg[`${mis.id}_${currentUser.uid}`] = progData;
+        updatedMissionsProg[`${mis.id}_${currentUser.uid}_w1`] = progData;
+        updatedMissionsProg[`${mis.id}_${currentUser.uid}_once`] = progData;
+        syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, progData);
+        syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, `${mis.id}_${currentUser.uid}`, progData);
+
+        if (isDone && requiresTeacherVerification) {
+          const teachers = data.users.filter((u: User) => u.role === 'teacher');
+          teachers.forEach((t: User) => {
+            addNotification(
+              t.uid,
+              `📥 Misi Perlu Diverifikasi: ${mis.title}`,
+              `${currentUser.displayName} telah menyelesaikan target pengumpulan untuk misi "${mis.title}". Siap untuk diperiksa & dinilai guru.`,
+              'mission',
+              'misi',
+              mis.id
+            );
+          });
+        }
+      });
+    }
 
     setData((prev: any) => {
       const updatedSubmissions = {
@@ -1564,21 +1685,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetMission = data.missions.find((m: Mission) => m.id === missionId);
     if (!targetMission) return;
 
-    const misKey = `${missionId}_${currentUser.uid}_w1`;
-    const prog = data.missionProgress[misKey];
+    const periodKey = targetMission.repeat === 'once' ? 'once' : 'w1';
+    const misKey = `${missionId}_${currentUser.uid}_${periodKey}`;
+    const idempotencyKey = `claim_${missionId}_${currentUser.uid}_${periodKey}`;
+    const prog = data.missionProgress[misKey] ||
+      data.missionProgress[`${missionId}_${currentUser.uid}`] ||
+      data.missionProgress[`${missionId}_${currentUser.uid}_w1`] ||
+      data.missionProgress[`${missionId}_${currentUser.uid}_once`];
+
     if (!prog || prog.status !== 'completed') return;
 
+    // Strict requirement: Missions with manual_verification can ONLY be awarded by teacher, student cannot claim directly
+    if (targetMission.rewardMode === 'manual_verification') {
+      return;
+    }
+
+    // Prevent duplicate claim if already in ledger or already claimed
+    const alreadyAwarded = (data.pointLedger || []).some(
+      (pl: PointLedger) => pl.idempotencyKey === idempotencyKey
+    );
+    if (alreadyAwarded || prog.status === 'claimed') return;
+
     const now = new Date().toISOString();
+    const pointsAmount = targetMission.rewardPoints || 0;
+    const xpAmount = targetMission.rewardXp ?? (targetMission.rewardPoints || 30);
+
     const ledgerEntry: PointLedger = {
       id: `led_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       schoolId: data.school.id,
       classId: data.currentClassId,
       userId: currentUser.uid,
-      amount: targetMission.rewardPoints,
+      amount: pointsAmount,
+      xpAmount,
       category: 'mission',
       sourceType: 'mission',
       sourceId: missionId,
-      idempotencyKey: `claim_${missionId}_${currentUser.uid}_w1`,
+      idempotencyKey,
       reason: `Menyelesaikan Misi: ${targetMission.title}`,
       actorId: 'system',
       actorName: 'Sistem Kelas 6E',
@@ -1588,6 +1730,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fireCelebrationConfetti('level_up');
 
     setData((prev: any) => {
+      if ((prev.pointLedger || []).some((pl: PointLedger) => pl.idempotencyKey === idempotencyKey)) {
+        return prev;
+      }
+
       const updatedProg = {
         ...prev.missionProgress,
         [misKey]: {
@@ -1599,8 +1745,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedStats = recalculateUserStats(
         prev.userStats,
         currentUser.uid,
-        targetMission.rewardPoints,
-        'mission'
+        pointsAmount,
+        'mission',
+        xpAmount
       );
       // Increment completed missions
       if (updatedStats[currentUser.uid]) {
@@ -1619,7 +1766,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Online persistent synchronization for claimed missions
     syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, { ...prog, status: 'claimed', updatedAt: now });
     syncDocToFirestore(COLLECTIONS.POINT_LEDGER, ledgerEntry.id, ledgerEntry);
-    const updatedUserStat = recalculateUserStats(data.userStats, currentUser.uid, targetMission.rewardPoints, 'mission')[currentUser.uid];
+    const updatedUserStat = recalculateUserStats(data.userStats, currentUser.uid, pointsAmount, 'mission', xpAmount)[currentUser.uid];
     if (updatedUserStat) {
       syncDocToFirestore(COLLECTIONS.USER_STATS, currentUser.uid, updatedUserStat);
     }
@@ -1627,7 +1774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(
       currentUser.uid,
       '🎁 Reward Misi Berhasil Diklaim!',
-      `Kamu memperoleh +${targetMission.rewardPoints} Poin dari misi "${targetMission.title}".`,
+      `Kamu memperoleh +${pointsAmount} Poin & +${xpAmount} XP dari misi "${targetMission.title}".`,
       'point',
       'profil'
     );
@@ -1638,7 +1785,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     submissionId: string,
     score: number,
     feedback: string,
-    rewardPoints: number
+    rewardPoints: number,
+    rewardXp?: number
   ) => {
     const sub = data.submissions[submissionId] || Object.values(data.submissions).find(
       (s: any) => s.id === submissionId || `${s.assignmentId}_${s.userId}` === submissionId
@@ -1651,6 +1799,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const idempotencyKey = `grade_${sub.assignmentId}_${sub.userId}`;
     const alreadyGraded = sub.status === 'graded';
+    const alreadyAwardedInLedger = (data.pointLedger || []).some(
+      (pl: PointLedger) => pl.userId === sub.userId && (
+        pl.sourceId === sub.assignmentId || 
+        pl.idempotencyKey === idempotencyKey ||
+        (pl.sourceType === 'assignment' && pl.sourceId === sub.assignmentId)
+      )
+    );
+
+    const finalPoints = Math.max(0, rewardPoints || 0);
+    const finalXp = rewardXp !== undefined ? Math.max(0, rewardXp) : (targetAsg?.rewardXp ?? finalPoints);
 
     const updatedSub: Submission = {
       ...sub,
@@ -1672,7 +1830,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetId: submissionId,
       metadata: {
         score,
-        rewardPoints,
+        rewardPoints: finalPoints,
+        rewardXp: finalXp,
         studentName: targetStudent?.displayName,
         assignmentTitle: targetAsg?.title,
       },
@@ -1686,14 +1845,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let updatedStats = { ...prev.userStats };
       let updatedBadges = [...prev.userBadges];
 
-      // Add points if not already awarded
-      if (!alreadyGraded && rewardPoints > 0) {
+      const alreadyAwarded = alreadyAwardedInLedger || (prev.pointLedger || []).some(
+        (pl: PointLedger) => pl.userId === sub.userId && (
+          pl.sourceId === sub.assignmentId || 
+          pl.idempotencyKey === idempotencyKey ||
+          (pl.sourceType === 'assignment' && pl.sourceId === sub.assignmentId)
+        )
+      );
+
+      // Add points and XP if and only if NOT already awarded
+      if (!alreadyAwarded && (finalPoints > 0 || finalXp > 0)) {
         createdLedgerEntry = {
           id: `led_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           schoolId: data.school.id,
           classId: sub.classId,
           userId: sub.userId,
-          amount: rewardPoints,
+          amount: finalPoints,
+          xpAmount: finalXp,
           category: 'academic',
           sourceType: 'assignment',
           sourceId: sub.assignmentId,
@@ -1704,7 +1872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           createdAt: now,
         };
         updatedLedger = [createdLedgerEntry, ...updatedLedger];
-        updatedStats = recalculateUserStats(prev.userStats, sub.userId, rewardPoints, 'academic');
+        updatedStats = recalculateUserStats(prev.userStats, sub.userId, finalPoints, 'academic', finalXp);
       }
 
       // Check perfect score badge
@@ -1748,8 +1916,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncDocToFirestore(COLLECTIONS.SUBMISSIONS, altKey, updatedSub);
     }
 
-    if (!alreadyGraded && rewardPoints > 0) {
-      const updatedUserStat = recalculateUserStats(data.userStats, sub.userId, rewardPoints, 'academic')[sub.userId];
+    if (!alreadyAwardedInLedger && (finalPoints > 0 || finalXp > 0)) {
+      const updatedUserStat = recalculateUserStats(data.userStats, sub.userId, finalPoints, 'academic', finalXp)[sub.userId];
       if (updatedUserStat) {
         syncDocToFirestore(COLLECTIONS.USER_STATS, sub.userId, updatedUserStat);
       }
@@ -1761,7 +1929,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(
       sub.userId,
       `📝 Tugas "${targetAsg?.title}" Telah Dinilai`,
-      `Nilai kamu: ${score}/100 (+${rewardPoints} Poin). Ulasan guru: "${feedback}"`,
+      `Nilai kamu: ${score}/100 (+${finalPoints} Poin & +${finalXp} XP). Ulasan guru: "${feedback}"`,
       'grade',
       'tugas',
       sub.assignmentId
@@ -1913,9 +2081,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...prev.auditLogs,
         ],
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
       return newState;
     });
 
@@ -1952,15 +2117,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (target) {
         syncDocToFirestore(COLLECTIONS.MATERIALS, id, target);
       }
-      const newState = { ...prev, materials: updated };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
+      return { ...prev, materials: updated };
     });
   };
 
   const deleteMaterial = (id: string) => {
+    deletedItemIds.current.add(id);
     setData((prev: any) => {
       const updatedMaterials = (prev.materials || []).filter((m: Material) => m.id !== id);
       const updatedProg = { ...(prev.materialProgress || {}) };
@@ -1969,15 +2131,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           delete updatedProg[key];
         }
       });
-      const newState = {
+      return {
         ...prev,
         materials: updatedMaterials,
         materialProgress: updatedProg,
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
     });
     deleteDocFromFirestore(COLLECTIONS.MATERIALS, id);
   };
@@ -2023,9 +2181,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...prev.auditLogs,
         ],
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
       return newState;
     });
 
@@ -2064,15 +2219,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (target) {
         syncDocToFirestore(COLLECTIONS.ASSIGNMENTS, id, target);
       }
-      const newState = { ...prev, assignments: updated };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
+      return { ...prev, assignments: updated };
     });
   };
 
   const deleteAssignment = (id: string) => {
+    deletedItemIds.current.add(id);
     setData((prev: any) => {
       const updatedAssignments = (prev.assignments || []).filter((a: Assignment) => a.id !== id);
       const updatedSubs = { ...(prev.submissions || {}) };
@@ -2081,15 +2233,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           delete updatedSubs[key];
         }
       });
-      const newState = {
+      return {
         ...prev,
         assignments: updatedAssignments,
         submissions: updatedSubs,
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
     });
     deleteDocFromFirestore(COLLECTIONS.ASSIGNMENTS, id);
   };
@@ -2100,6 +2248,419 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       createAssignment(asg as any);
     }
+  };
+
+  // ─── Quizzes CRUD & Submissions ──────────────────────────────────────────────
+
+  const createQuiz = (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'schoolId'>) => {
+    const id = `quiz_${Date.now()}`;
+    const now = new Date().toISOString();
+    const newQuiz: Quiz = {
+      ...quiz,
+      id,
+      schoolId: data.school.id,
+      createdBy: currentUser?.uid || 'usr_guru_01',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setData((prev: any) => {
+      const updatedQuizzes = sortItemsNewestFirst([newQuiz, ...(prev.quizzes || [])]);
+      const newState = {
+        ...prev,
+        quizzes: updatedQuizzes,
+        auditLogs: [
+          {
+            id: `log_${Date.now()}`,
+            schoolId: data.school.id,
+            actorId: currentUser?.uid || 'usr_guru_01',
+            actorName: currentUser?.displayName || 'Guru Kelas',
+            action: 'create_quiz',
+            targetType: 'assignment',
+            targetId: id,
+            metadata: { title: quiz.title, subject: quiz.subject, durationMinutes: quiz.durationMinutes },
+            timestamp: now,
+          },
+          ...prev.auditLogs,
+        ],
+      };
+      return newState;
+    });
+
+    syncDocToFirestore(COLLECTIONS.QUIZZES, id, newQuiz);
+
+    // Notify students
+    data.users
+      .filter((u: User) => {
+        if (u.role !== 'student') return false;
+        if (!quiz.classIds.some((cid) => (u.classIds || []).includes(cid))) return false;
+        if (quiz.assignedUserIds && quiz.assignedUserIds.length > 0) {
+          return quiz.assignedUserIds.includes(u.uid);
+        }
+        return true;
+      })
+      .forEach((student: User) => {
+        addNotification(
+          student.uid,
+          `🎯 Kuis Baru: ${quiz.title}`,
+          `Kuis ${quiz.subject} berhadiah +${quiz.rewardPoints} Poin telah tersedia. Durasi: ${quiz.durationMinutes > 0 ? quiz.durationMinutes + ' menit' : 'Bebas'}.`,
+          'assignment',
+          'quiz',
+          id
+        );
+      });
+  };
+
+  const updateQuiz = (id: string, quizData: Partial<Quiz>) => {
+    const now = new Date().toISOString();
+    setData((prev: any) => {
+      const updated = sortItemsNewestFirst((prev.quizzes || []).map((q: Quiz) => (q.id === id ? { ...q, ...quizData, updatedAt: now } : q)));
+      const target = updated.find((q: Quiz) => q.id === id);
+      if (target) {
+        syncDocToFirestore(COLLECTIONS.QUIZZES, id, target);
+      }
+      return { ...prev, quizzes: updated };
+    });
+  };
+
+  const deleteQuiz = (id: string) => {
+    deletedItemIds.current.add(id);
+    setData((prev: any) => {
+      const updatedQuizzes = (prev.quizzes || []).filter((q: Quiz) => q.id !== id);
+      const updatedSubs = { ...(prev.quizSubmissions || {}) };
+      Object.keys(updatedSubs).forEach((key) => {
+        if (key.startsWith(`${id}_`) || updatedSubs[key]?.quizId === id) {
+          delete updatedSubs[key];
+        }
+      });
+      return {
+        ...prev,
+        quizzes: updatedQuizzes,
+        quizSubmissions: updatedSubs,
+      };
+    });
+    deleteDocFromFirestore(COLLECTIONS.QUIZZES, id);
+  };
+
+  const saveQuiz = (quizData: Partial<Quiz>) => {
+    if (quizData.id) {
+      updateQuiz(quizData.id, quizData);
+    } else {
+      createQuiz(quizData as any);
+    }
+  };
+
+  // Student submits quiz answers with auto-scoring for PG, PG Kompleks, Menjodohkan, and Isian
+  const submitQuizAnswers = (quizId: string, answers: Record<string, QuizStudentAnswer>) => {
+    if (!currentUser) return { success: false, submission: {} as QuizSubmission };
+    const targetQuiz = data.quizzes.find((q: Quiz) => q.id === quizId);
+    if (!targetQuiz) return { success: false, submission: {} as QuizSubmission };
+
+    const subKey = `${quizId}_${currentUser.uid}`;
+    const now = new Date().toISOString();
+    const resolvedClassId = targetQuiz.classIds?.[0] || currentUser.classIds?.[0] || data.currentClassId || 'cls_6a';
+    const isLate = targetQuiz.dueAt ? new Date(now) > new Date(targetQuiz.dueAt) : false;
+
+    let totalEarnedScore = 0;
+    let totalMaxScore = 0;
+    let hasEssay = false;
+    const evaluatedAnswers: Record<string, QuizStudentAnswer> = {};
+
+    targetQuiz.questions.forEach((q) => {
+      const qPoints = q.points || 10;
+      totalMaxScore += qPoints;
+      const studentAns: QuizStudentAnswer = answers[q.id] || { questionId: q.id, type: q.type };
+      let earned = 0;
+      let isCorrect = false;
+
+      if (q.type === 'single_choice') {
+        isCorrect = studentAns.selectedOptionIndex !== undefined && studentAns.selectedOptionIndex === q.correctOptionIndex;
+        earned = isCorrect ? qPoints : 0;
+      } else if (q.type === 'complex_multiple_choice') {
+        if (q.complexMode === 'true_false' && q.complexStatements && q.complexStatements.length > 0) {
+          let correctCount = 0;
+          q.complexStatements.forEach((stmt) => {
+            const studentStmtVal = studentAns.statementAnswers?.[stmt.id];
+            if (studentStmtVal === stmt.isCorrect) {
+              correctCount++;
+            }
+          });
+          const ratio = correctCount / q.complexStatements.length;
+          earned = Math.round(ratio * qPoints);
+          isCorrect = correctCount === q.complexStatements.length;
+        } else if (q.correctOptionIndices && q.correctOptionIndices.length > 0) {
+          const selected = (studentAns.selectedOptionIndices || []).slice().sort();
+          const target = q.correctOptionIndices.slice().sort();
+          isCorrect = selected.length === target.length && selected.every((val, idx) => val === target[idx]);
+          earned = isCorrect ? qPoints : 0;
+        }
+      } else if (q.type === 'matching') {
+        if (q.matchingPairs && q.matchingPairs.length > 0) {
+          let matchedCount = 0;
+          q.matchingPairs.forEach((pair) => {
+            if (studentAns.matchingPairsAnswer?.[pair.id] === pair.right) {
+              matchedCount++;
+            }
+          });
+          const ratio = matchedCount / q.matchingPairs.length;
+          earned = Math.round(ratio * qPoints);
+          isCorrect = matchedCount === q.matchingPairs.length;
+        }
+      } else if (q.type === 'short_answer') {
+        const studentText = (studentAns.shortAnswerText || '').trim();
+        const accepted = q.acceptedAnswers || [];
+        if (q.caseSensitive) {
+          isCorrect = accepted.some((ans) => ans.trim() === studentText);
+        } else {
+          isCorrect = accepted.some((ans) => ans.trim().toLowerCase() === studentText.toLowerCase());
+        }
+        earned = isCorrect ? qPoints : 0;
+      } else if (q.type === 'essay') {
+        hasEssay = true;
+        earned = 0;
+        isCorrect = false;
+      }
+
+      evaluatedAnswers[q.id] = {
+        ...studentAns,
+        earnedScore: earned,
+        maxScore: qPoints,
+        isCorrect: q.type === 'essay' ? undefined : isCorrect,
+        originalAutoScore: earned,
+        originalIsCorrect: q.type === 'essay' ? undefined : isCorrect,
+      };
+
+      totalEarnedScore += earned;
+    });
+
+    const status: 'in_progress' | 'submitted' | 'graded' = hasEssay ? 'submitted' : 'graded';
+    // Nilai akhir kuis otomatis dikonversi ke skala 100 berapapun total bobot poin tiap soal
+    const percentageScore = totalMaxScore > 0 ? Math.min(100, Math.max(0, Math.round((totalEarnedScore / totalMaxScore) * 100))) : 0;
+    const finalScore100 = percentageScore;
+    
+    // 1 Nilai = 1 Poin & 1 XP secara otomatis
+    const rewardPointsAwarded = status === 'graded' ? finalScore100 : 0;
+    const rewardXpAwarded = status === 'graded' ? finalScore100 : 0;
+
+    const newSub: QuizSubmission = {
+      id: subKey,
+      quizId,
+      userId: currentUser.uid,
+      classId: resolvedClassId,
+      answers: evaluatedAnswers,
+      status,
+      startedAt: now,
+      submittedAt: now,
+      totalScore: finalScore100,
+      maxScore: 100,
+      percentageScore: finalScore100,
+      rewardPointsAwarded,
+      rewardXpAwarded,
+      isLate,
+      updatedAt: now,
+    };
+
+    fireCelebrationConfetti(percentageScore >= 75 ? 'level_up' : 'submission');
+
+    let createdLedgerEntry: PointLedger | null = null;
+    if (status === 'graded' && (rewardPointsAwarded > 0 || rewardXpAwarded > 0)) {
+      createdLedgerEntry = {
+        id: `led_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        schoolId: data.school.id,
+        classId: resolvedClassId,
+        userId: currentUser.uid,
+        amount: rewardPointsAwarded,
+        xpAmount: rewardXpAwarded,
+        category: 'academic',
+        sourceType: 'assignment',
+        sourceId: quizId,
+        idempotencyKey: `quiz_reward_${quizId}_${currentUser.uid}`,
+        reason: `Mengerjakan Kuis: ${targetQuiz.title} (Skor: ${percentageScore})`,
+        actorId: 'system',
+        actorName: 'Sistem Kuis Gamifikasi',
+        createdAt: now,
+      };
+      syncDocToFirestore(COLLECTIONS.POINT_LEDGER, createdLedgerEntry.id, createdLedgerEntry);
+    }
+
+    setData((prev: any) => {
+      const updatedSubmissions = {
+        ...prev.quizSubmissions,
+        [subKey]: newSub,
+        [newSub.id]: newSub,
+      };
+
+      let updatedStats = prev.userStats;
+      let updatedLedger = prev.pointLedger || [];
+      if (createdLedgerEntry) {
+        updatedLedger = [createdLedgerEntry, ...updatedLedger];
+        updatedStats = recalculateUserStats(prev.userStats, currentUser.uid, rewardPointsAwarded, 'academic', rewardXpAwarded);
+      }
+
+      return {
+        ...prev,
+        quizSubmissions: updatedSubmissions,
+        pointLedger: updatedLedger,
+        userStats: updatedStats,
+      };
+    });
+
+    syncDocToFirestore(COLLECTIONS.QUIZ_SUBMISSIONS, subKey, newSub);
+
+    addNotification(
+      currentUser.uid,
+      status === 'graded' ? '🎉 Kuis Selesai & Dinilai Otomatis' : '✅ Kuis Berhasil Dikumpulkan',
+      status === 'graded'
+        ? `Kamu memperoleh nilai ${percentageScore}, +${rewardPointsAwarded} Poin & +${rewardXpAwarded} XP pada kuis "${targetQuiz.title}".`
+        : `Jawaban kuis "${targetQuiz.title}" telah terkirim. Menunggu pemeriksaan soal uraian oleh guru.`,
+      'assignment',
+      'quiz',
+      quizId
+    );
+
+    // Notify teachers
+    const teachers = data.users.filter((u: User) => u.role === 'teacher');
+    teachers.forEach((t: User) => {
+      addNotification(
+        t.uid,
+        `📊 Kuis Dikerjakan: ${targetQuiz.title}`,
+        `${currentUser.displayName} telah menyelesaikan kuis "${targetQuiz.title}" (Skor: ${percentageScore}).`,
+        'submission',
+        'quiz',
+        quizId
+      );
+    });
+
+    return { success: true, submission: newSub };
+  };
+
+  // Teacher grades & manually corrects questions in a quiz submission
+  const gradeQuizSubmission = (
+    submissionId: string,
+    questionScores: Record<string, { earnedScore: number; feedback?: string; isCorrect?: boolean; isManualOverride?: boolean }>,
+    teacherFeedback?: string
+  ) => {
+    const sub = data.quizSubmissions[submissionId] || Object.values(data.quizSubmissions).find((s: any) => s.id === submissionId);
+    if (!sub) return;
+
+    const targetQuiz = data.quizzes.find((q: Quiz) => q.id === sub.quizId);
+    const now = new Date().toISOString();
+
+    const updatedAnswers = { ...sub.answers };
+    let totalScore = 0;
+    let totalMaxScore = 0;
+
+    const questionsList = targetQuiz?.questions || [];
+    questionsList.forEach((q) => {
+      const qId = q.id;
+      const ans: QuizStudentAnswer = updatedAnswers[qId] ? { ...updatedAnswers[qId] } : {
+        questionId: qId,
+        type: q.type,
+        earnedScore: 0,
+        maxScore: q.points,
+        isCorrect: false,
+      };
+
+      const manual = questionScores?.[qId];
+      if (manual) {
+        ans.earnedScore = Math.min(q.points, Math.max(0, Number(manual.earnedScore) || 0));
+        if (manual.feedback !== undefined) {
+          ans.teacherFeedback = manual.feedback;
+        }
+        ans.isCorrect = manual.isCorrect !== undefined ? manual.isCorrect : (ans.earnedScore > 0);
+        ans.isManualOverride = manual.isManualOverride ?? true;
+      }
+
+      totalScore += ans.earnedScore || 0;
+      totalMaxScore += q.points || ans.maxScore || 10;
+      updatedAnswers[qId] = ans;
+    });
+
+    const percentageScore = totalMaxScore > 0 ? Math.min(100, Math.max(0, Math.round((totalScore / totalMaxScore) * 100))) : 0;
+    const finalScore100 = percentageScore;
+
+    // 1 Nilai = 1 Poin & 1 XP secara otomatis
+    const rewardPoints = finalScore100;
+    const rewardXp = finalScore100;
+
+    const oldPoints = sub.rewardPointsAwarded || 0;
+    const oldXp = sub.rewardXpAwarded || 0;
+    const pointsDelta = rewardPoints - oldPoints;
+    const xpDelta = Math.max(0, rewardXp - oldXp);
+
+    const updatedSub: QuizSubmission = {
+      ...sub,
+      answers: updatedAnswers,
+      status: 'graded',
+      totalScore: finalScore100,
+      maxScore: 100,
+      percentageScore: finalScore100,
+      rewardPointsAwarded: rewardPoints,
+      rewardXpAwarded: Math.max(oldXp, rewardXp),
+      feedback: teacherFeedback !== undefined ? teacherFeedback : sub.feedback,
+      gradedBy: currentUser?.uid || 'usr_guru_01',
+      gradedAt: now,
+      updatedAt: now,
+    };
+
+    let createdLedgerEntry: PointLedger | null = null;
+    if (pointsDelta !== 0 || xpDelta > 0) {
+      const isReGrade = sub.status === 'graded';
+      createdLedgerEntry = {
+        id: `led_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        schoolId: data.school.id,
+        classId: sub.classId || data.currentClassId,
+        userId: sub.userId,
+        amount: pointsDelta,
+        xpAmount: xpDelta,
+        category: 'academic',
+        sourceType: 'assignment',
+        sourceId: sub.quizId,
+        idempotencyKey: isReGrade 
+          ? `quiz_grade_adj_${sub.quizId}_${sub.userId}_${Date.now()}`
+          : `quiz_grade_${sub.quizId}_${sub.userId}`,
+        reason: isReGrade 
+          ? `Koreksi Nilai Kuis: ${targetQuiz?.title || 'Kuis'} (Skor Akhir: ${percentageScore})`
+          : `Penilaian Kuis: ${targetQuiz?.title || 'Kuis'} (Skor Akhir: ${percentageScore})`,
+        actorId: currentUser?.uid || 'usr_guru_01',
+        actorName: currentUser?.displayName || 'Guru Kelas',
+        createdAt: now,
+      };
+      syncDocToFirestore(COLLECTIONS.POINT_LEDGER, createdLedgerEntry.id, createdLedgerEntry);
+    }
+
+    setData((prev: any) => {
+      const updatedSubmissions = {
+        ...prev.quizSubmissions,
+        [submissionId]: updatedSub,
+        [updatedSub.id]: updatedSub,
+      };
+
+      let updatedStats = prev.userStats;
+      let updatedLedger = prev.pointLedger || [];
+      if (createdLedgerEntry) {
+        updatedLedger = [createdLedgerEntry, ...updatedLedger];
+        updatedStats = recalculateUserStats(prev.userStats, sub.userId, pointsDelta, 'academic', xpDelta);
+      }
+
+      return {
+        ...prev,
+        quizSubmissions: updatedSubmissions,
+        pointLedger: updatedLedger,
+        userStats: updatedStats,
+      };
+    });
+
+    syncDocToFirestore(COLLECTIONS.QUIZ_SUBMISSIONS, updatedSub.id, updatedSub);
+
+    addNotification(
+      sub.userId,
+      '📋 Hasil Penilaian Kuis',
+      `Kuis "${targetQuiz?.title || 'Kuis'}" telah selesai diperiksa guru dengan Skor Akhir: ${percentageScore}/100 (+${rewardPoints} Poin & +${rewardXp} XP).`,
+      'grade',
+      'quiz',
+      sub.quizId
+    );
   };
 
   // Missions CRUD
@@ -2117,14 +2678,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setData((prev: any) => {
       const updatedMissions = sortItemsNewestFirst([newMis, ...(prev.missions || [])]);
-      const newState = {
+      return {
         ...prev,
         missions: updatedMissions,
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
     });
 
     // Sync to Firestore online
@@ -2140,11 +2697,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (target) {
           syncDocToFirestore(COLLECTIONS.MISSIONS, mis.id!, target);
         }
-        const newState = { ...prev, missions: updated };
-        try {
-          safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-        } catch (e) {}
-        return newState;
+        return { ...prev, missions: updated };
       });
     } else {
       createMission(mis as any);
@@ -2152,6 +2705,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteMission = (id: string) => {
+    deletedItemIds.current.add(id);
     setData((prev: any) => {
       const updatedMissions = (prev.missions || []).filter((m: Mission) => m.id !== id);
       const updatedMisProg = { ...(prev.missionProgress || {}) };
@@ -2160,15 +2714,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           delete updatedMisProg[key];
         }
       });
-      const newState = {
+      return {
         ...prev,
         missions: updatedMissions,
         missionProgress: updatedMisProg,
       };
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-      return newState;
     });
     deleteDocFromFirestore(COLLECTIONS.MISSIONS, id);
   };
@@ -2183,6 +2733,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date().toISOString();
     const existingProg = data.missionProgress[misKey] || data.missionProgress[`${missionId}_${currentUser.uid}`];
 
+    const isManual = targetMis.rewardMode === 'manual_verification' || (!targetMis.rewardMode && (targetMis.type === 'custom' || targetMis.type === 'manual'));
+    const targetStatus: MissionProgress['status'] = isManual ? 'pending_verification' : 'completed';
+
     const progData: MissionProgress = {
       id: misKey,
       missionId,
@@ -2190,15 +2743,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       classId: data.currentClassId,
       periodKey,
       progress: targetMis.target,
-      status: 'pending_verification',
+      status: targetStatus,
       submittedAt: now,
+      completedAt: isManual ? undefined : now,
       answerText: answerText || '',
       files: files || [],
       attempt: (existingProg?.attempt || 0) + 1,
       updatedAt: now,
     };
 
-    fireCelebrationConfetti('submission');
+    fireCelebrationConfetti(isManual ? 'submission' : 'level_up');
 
     setData((prev: any) => ({
       ...prev,
@@ -2206,36 +2760,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev.missionProgress,
         [misKey]: progData,
         [`${missionId}_${currentUser.uid}`]: progData,
+        [`${missionId}_${currentUser.uid}_w1`]: progData,
+        [`${missionId}_${currentUser.uid}_once`]: progData,
       },
     }));
 
     syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, misKey, progData);
     syncDocToFirestore(COLLECTIONS.MISSION_PROGRESS, `${missionId}_${currentUser.uid}`, progData);
 
-    addNotification(
-      currentUser.uid,
-      '🎯 Laporan Misi Berhasil Dikirim',
-      `Laporan untuk misi "${targetMis.title}" telah dikirim ke guru. Menunggu verifikasi & penilaian.`,
-      'mission',
-      'misi'
-    );
-
-    // Notify teachers
-    const teachers = data.users.filter((u: User) => u.role === 'teacher');
-    teachers.forEach((t: User) => {
+    if (isManual) {
       addNotification(
-        t.uid,
-        `📥 Misi Perlu Diverifikasi: ${targetMis.title}`,
-        `${currentUser.displayName} telah menyelesaikan dan mengirimkan bukti misi "${targetMis.title}". Siap untuk dinilai.`,
+        currentUser.uid,
+        '🎯 Laporan Misi Berhasil Dikirim',
+        `Laporan untuk misi "${targetMis.title}" telah dikirim ke guru. Menunggu verifikasi & penilaian guru (Poin belum bertambah).`,
         'mission',
-        'misi',
-        targetMis.id
+        'misi'
       );
-    });
+
+      // Notify teachers
+      const teachers = data.users.filter((u: User) => u.role === 'teacher');
+      teachers.forEach((t: User) => {
+        addNotification(
+          t.uid,
+          `📥 Misi Perlu Diverifikasi: ${targetMis.title}`,
+          `${currentUser.displayName} telah menyelesaikan dan mengirimkan bukti misi "${targetMis.title}". Siap untuk diperiksa & dinilai guru.`,
+          'mission',
+          'misi',
+          targetMis.id
+        );
+      });
+    } else {
+      addNotification(
+        currentUser.uid,
+        '🎉 Misi Selesai!',
+        `Selamat! Misi "${targetMis.title}" telah selesai. Silakan klaim hadiah poin & XP kamu sekarang!`,
+        'mission',
+        'misi'
+      );
+    }
   };
 
   const verifyManualMission = (missionId: string, userId: string, score?: number, feedback?: string) => {
     const targetMis = data.missions.find((m: Mission) => m.id === missionId);
+    if (targetMis?.rewardMode === 'manual_verification') {
+      // For manual verification missions, points MUST be awarded directly by teacher (no student claim)
+      gradeAndAwardMission(missionId, userId, score !== undefined ? score : 100, feedback);
+      return;
+    }
     const periodKey = targetMis?.repeat === 'once' ? 'once' : 'w1';
     const misKey = `${missionId}_${userId}_${periodKey}`;
     const now = new Date().toISOString();
@@ -2814,7 +3385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedLedger = (prev.pointLedger || []).filter((pl: any) => pl.userId !== userId);
       const updatedBadges = (prev.userBadges || []).filter((b: any) => b.userId !== userId);
 
-      const newState = {
+      return {
         ...prev,
         users: updatedUsers,
         userStats: updatedStats,
@@ -2824,12 +3395,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pointLedger: updatedLedger,
         userBadges: updatedBadges,
       };
-
-      try {
-        safeStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      } catch (e) {}
-
-      return newState;
     });
 
     // Delete student and stats documents from Firestore
@@ -2977,46 +3542,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteDocFromFirestore(COLLECTIONS.CHAT_MESSAGES, messageId);
   };
 
-  const resetToInitialData = () => {
+  const resetToInitialData = async () => {
     try {
       safeStorage.removeItem(STORAGE_KEY);
-    } catch (e) {}
-    setData({
-      users: INITIAL_USERS,
-      school: INITIAL_SCHOOL,
-      classes: INITIAL_CLASSES,
-      materials: INITIAL_MATERIALS,
-      materialProgress: INITIAL_MATERIAL_PROGRESS,
-      assignments: INITIAL_ASSIGNMENTS,
-      submissions: INITIAL_SUBMISSIONS,
-      missions: INITIAL_MISSIONS,
-      missionProgress: INITIAL_MISSION_PROGRESS,
-      pointLedger: INITIAL_POINT_LEDGER,
-      userStats: INITIAL_USER_STATS,
-      badges: INITIAL_BADGES,
-      userBadges: INITIAL_USER_BADGES,
-      announcements: INITIAL_ANNOUNCEMENTS,
-      auditLogs: INITIAL_AUDIT_LOGS,
-      chatMessages: INITIAL_CHAT_MESSAGES,
-      notifications: [
-        {
-          id: 'notif_init_01',
-          userId: 'usr_budi_01',
-          title: 'Tugas Baru Diterbitkan',
-          message: 'Teguh Firmansyah Apriliana, M.Pd menerbitkan tugas "Poster Karakteristik Planet Favorit".',
-          type: 'assignment',
-          targetTab: 'tugas',
-          targetId: 'asg_01_ipa_proyek_planet',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        },
-      ],
-      currentUserId: null,
-      currentClassId: 'cls_6a',
-    });
-    try {
       safeSessionStorage.removeItem(SESSION_USER_KEY);
     } catch (e) {}
+    await refreshFromCloud();
   };
 
   return (
@@ -3034,6 +3565,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         materialProgress: data.materialProgress || {},
         assignments: data.assignments || [],
         submissions: data.submissions || {},
+        quizzes: data.quizzes || [],
+        quizSubmissions: data.quizSubmissions || {},
         missions: data.missions || [],
         missionProgress: data.missionProgress || {},
         pointLedger: data.pointLedger || [],
@@ -3059,6 +3592,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         changePassword,
         markMaterialCompleted,
         submitAssignment,
+        submitQuizAnswers,
         claimMissionReward,
         createMaterial,
         updateMaterial,
@@ -3068,6 +3602,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAssignment,
         deleteAssignment,
         saveAssignment,
+        createQuiz,
+        updateQuiz,
+        deleteQuiz,
+        saveQuiz,
+        gradeQuizSubmission,
         gradeSubmission,
         requestRevision,
         adjustStudentPoints,

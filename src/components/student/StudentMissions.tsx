@@ -110,10 +110,12 @@ export const StudentMissions: React.FC = () => {
             <div
               key={mis.id}
               className={`rounded-3xl border p-6 flex flex-col justify-between transition-all duration-300 ${
-                isDone
+                isDone && mis.rewardMode !== 'manual_verification'
                   ? 'bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-amber-50 border-amber-300 shadow-[0_0_24px_rgba(245,158,11,0.35)] ring-2 ring-amber-400/60'
                   : isClaimed
                   ? 'bg-slate-50/80 border-slate-200 grayscale contrast-90 opacity-65 hover:opacity-100 hover:grayscale-0 shadow-xs'
+                  : (isDone || isPending) && mis.rewardMode === 'manual_verification'
+                  ? 'bg-amber-50/50 border-amber-200 shadow-xs'
                   : 'bg-white border-orange-100/90 hover:border-orange-300 shadow-[0_0_20px_-3px_rgba(249,115,22,0.18)] hover:shadow-[0_0_28px_rgba(249,115,22,0.3)] ring-1 ring-orange-400/20'
               }`}
             >
@@ -148,13 +150,28 @@ export const StudentMissions: React.FC = () => {
                         Misi Mandiri
                       </span>
                     )}
+                    {mis.rewardMode === 'manual_verification' ? (
+                      <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                        <Award className="w-3 h-3 text-amber-700" />
+                        <span>Poin Diberikan Guru</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                        <Zap className="w-3 h-3 text-emerald-600" />
+                        <span>Klaim Otomatis</span>
+                      </span>
+                    )}
                   </div>
 
-                  {/* Points indicator solely positioned in top right corner */}
-                  <div className="text-right">
-                    <span className="text-sm font-black text-amber-800 bg-amber-100/90 px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-xs border border-amber-200">
-                      <PointIcon className="w-4 h-4" />
-                      <span>+{mis.rewardPoints} Poin</span>
+                  {/* Points & XP indicator positioned in top right corner */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-black text-amber-800 bg-amber-50 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-xs border border-amber-200">
+                      <PointIcon className="w-3.5 h-3.5" />
+                      <span>+{mis.rewardPoints} Pts</span>
+                    </span>
+                    <span className="text-xs font-black text-purple-800 bg-purple-50 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-xs border border-purple-200">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      <span>+{mis.rewardXp ?? mis.rewardPoints} XP</span>
                     </span>
                   </div>
                 </div>
@@ -224,12 +241,62 @@ export const StudentMissions: React.FC = () => {
                   />
                 </div>
 
+                {/* Teacher Feedback / Note if present */}
+                {prog?.feedback && (
+                  <div className="mt-3 p-3 rounded-2xl bg-amber-50/70 border border-amber-200/70 text-xs">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 block mb-0.5">
+                      Catatan & Penilaian Guru {prog.score !== undefined ? `(Nilai: ${prog.score}/100)` : ''}:
+                    </span>
+                    <p className="text-slate-700 italic">"{prog.feedback}"</p>
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center justify-end gap-2.5">
                   {isClaimed ? (
                     <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-4 py-2 rounded-xl flex items-center gap-1.5 border border-emerald-200">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Reward Sudah Diklaim</span>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        {mis.rewardMode === 'manual_verification'
+                          ? `✓ Poin Diberikan oleh Guru (+${mis.rewardPoints} Poin${prog?.score !== undefined ? ` • Nilai: ${prog.score}/100` : ''})`
+                          : `Reward Sudah Diklaim (+${mis.rewardPoints} Poin)`}
+                      </span>
                     </span>
+                  ) : mis.rewardMode === 'manual_verification' ? (
+                    isDone || isPending ? (
+                      <span className="text-xs font-bold text-amber-900 bg-amber-50 px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-amber-300 shadow-xs">
+                        <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                        <span>Menunggu Verifikasi & Nilai Guru (Poin Diberikan oleh Guru)</span>
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {mis.type === 'assignment' && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('tugas')}
+                            className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-all cursor-pointer"
+                          >
+                            Kerjakan Tugas
+                          </button>
+                        )}
+                        {mis.type === 'material' && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('materi')}
+                            className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all cursor-pointer"
+                          >
+                            Buka Materi
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSubmitModalMission(mis)}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Kirim Laporan / Bukti</span>
+                        </button>
+                      </div>
+                    )
                   ) : isDone ? (
                     <button
                       type="button"
@@ -244,26 +311,37 @@ export const StudentMissions: React.FC = () => {
                       <span>Klaim Hadiah (+{mis.rewardPoints} Poin)!</span>
                     </button>
                   ) : isPending ? (
-                    <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-amber-300 shadow-xs">
-                      <Clock className="w-4 h-4 text-amber-500 animate-spin" />
-                      <span>Laporan Terkirim • Menunggu Penilaian Guru</span>
+                    <span className="text-xs font-bold text-amber-900 bg-amber-50 px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-amber-300 shadow-xs">
+                      <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                      <span>Laporan Terkirim • Menunggu Verifikasi Guru (Poin Belum Bertambah)</span>
                     </span>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {mis.type === 'assignment' && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('tugas')}
+                          className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-all cursor-pointer"
+                        >
+                          Kerjakan Tugas
+                        </button>
+                      )}
+                      {mis.type === 'material' && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('materi')}
+                          className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all cursor-pointer"
+                        >
+                          Buka Materi
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setSubmitModalMission(mis)}
-                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105"
+                        className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>Kirim Laporan Misi</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab(mis.type === 'material' ? 'materi' : 'tugas')}
-                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 px-3 py-2 rounded-xl hover:bg-indigo-50 transition-colors"
-                      >
-                        Lihat Tugas/Materi →
+                        <span>Kirim Laporan / Bukti</span>
                       </button>
                     </div>
                   )}

@@ -27,7 +27,7 @@ export const BOARD_TEMPLATES: Record<BoardTemplate, TemplateDefinition> = {
           width: 220,
           height: 180,
           color: '#FEF08A', // pastel yellow
-          text: '👋 Selamat Datang di Papan Ide!\n\nTempel ide hebatmu di sini menggunakan Sticky Note warna-warni!',
+          text: '👋 Selamat Datang di Ruang Kolaborasi!\n\nTempel ide hebatmu di sini menggunakan Sticky Note warna-warni!',
           authorId,
           authorName,
           authorRole: 'teacher',

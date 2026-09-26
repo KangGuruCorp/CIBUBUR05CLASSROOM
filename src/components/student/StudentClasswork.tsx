@@ -16,6 +16,7 @@ import {
   FileText,
   Filter,
   Image as ImageIcon,
+  MessageSquare,
   Search,
   Sparkles,
   Upload,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Assignment, Submission } from '../../types';
-import { formatDateIndo, isDeadlineNear } from '../../utils/gamification';
+import { formatDateIndo, formatDayAndDateIndo, getDateKey, isDeadlineNear } from '../../utils/gamification';
 import { EmptyState } from '../common/EmptyState';
 import { PointIcon } from '../common/PointIcon';
 import { StatusPill } from '../common/StatusPill';
@@ -76,11 +77,23 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
     if (!currentUser) return [];
     return assignments.filter((asg) => {
       // Must be in current class
-      const inClass = (asg.classIds || []).includes(currentClassId);
+      const userClassIds = currentUser.classIds || [currentClassId];
+      const inClass =
+        (asg.classIds || []).includes(currentClassId) ||
+        (asg.classIds || []).some((cid) => userClassIds.includes(cid)) ||
+        (!asg.classIds || asg.classIds.length === 0);
       if (!inClass) return false;
 
       // Must not be draft
       if (asg.status === 'draft') return false;
+
+      // Check scheduled publish time: if openAt is explicitly in the future, don't show yet
+      if (asg.openAt) {
+        const openTime = new Date(asg.openAt).getTime();
+        if (!isNaN(openTime) && openTime > Date.now()) {
+          return false;
+        }
+      }
 
       // If specific assignedUserIds defined, current user must be in the list
       if (asg.assignedUserIds && asg.assignedUserIds.length > 0) {
@@ -126,6 +139,36 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
       return true;
     });
   }, [studentTasks, submissions, currentUser, statusFilter, selectedTopic, searchQuery]);
+
+  // Group tasks by publish / open date (kapan tugas terbit)
+  const groupedTasks = useMemo(() => {
+    const map = new Map<string, { dateLabel: string; tasks: Assignment[] }>();
+
+    // Sort newest publish date first
+    const sorted = [...filteredTasks].sort((a, b) => {
+      const dateA = new Date(a.openAt || a.createdAt || a.dueAt || 0).getTime();
+      const dateB = new Date(b.openAt || b.createdAt || b.dueAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    sorted.forEach((task) => {
+      const dateStr = task.openAt || task.createdAt || task.dueAt;
+      const key = getDateKey(dateStr);
+      const label = formatDayAndDateIndo(dateStr);
+
+      if (!map.has(key)) {
+        map.set(key, { dateLabel: label, tasks: [] });
+      }
+      map.get(key)!.tasks.push(task);
+    });
+
+    const list: { dateKey: string; dateLabel: string; tasks: Assignment[] }[] = [];
+    map.forEach((val, key) => {
+      list.push({ dateKey: key, dateLabel: val.dateLabel, tasks: val.tasks });
+    });
+
+    return list;
+  }, [filteredTasks]);
 
   const toggleAccordion = (id: string) => {
     setExpandedItemIds((prev) => ({
@@ -272,21 +315,44 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
           }
         />
       ) : (
-        <div className="space-y-4">
-          {filteredTasks.map((task) => {
-            const isExpanded = Boolean(expandedItemIds[task.id]);
-            const sub = currentUser ? submissions[`${task.id}_${currentUser.uid}`] : undefined;
-            const isSubmitted = sub && (sub.status === 'submitted' || sub.status === 'resubmitted');
-            const isGraded = sub && sub.status === 'graded';
-            const isRevision = sub && sub.status === 'revision_requested';
-            const hasAttachments = (task.attachments && task.attachments.length > 0) || Boolean(task.youtubeUrl);
-            const { isUrgent, isPast } = isDeadlineNear(task.dueAt);
+        <div className="space-y-6">
+          {groupedTasks.map((group, groupIdx) => (
+            <div key={group.dateKey} className="space-y-3">
+              {/* Thin Date Separator with Day & Date */}
+              <div className={`flex items-center gap-3 ${groupIdx > 0 ? 'pt-4' : 'pt-1'} pb-1`}>
+                <div className="h-[1px] flex-1 bg-slate-200/90" />
+                <div className="flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-100/90 text-slate-500 text-[11px] font-semibold border border-slate-200/70 shadow-2xs shrink-0 select-none">
+                  <Calendar className="w-3 h-3 text-slate-400" />
+                  <span>{group.dateLabel}</span>
+                </div>
+                <div className="h-[1px] flex-1 bg-slate-200/90" />
+              </div>
+
+              {/* Tasks List for this date */}
+              <div className="space-y-4">
+                {group.tasks.map((task) => {
+                  const isExpanded = Boolean(expandedItemIds[task.id]);
+                  const sub = currentUser
+                    ? submissions[`${task.id}_${currentUser.uid}`] ||
+                      Object.values(submissions).find(
+                        (s: any) => s && s.assignmentId === task.id && s.userId === currentUser.uid
+                      )
+                    : undefined;
+                  const isGraded = Boolean(sub && (sub.status === 'graded' || (sub.score !== undefined && sub.score !== null)));
+                  const isSubmitted = Boolean(sub && (sub.status === 'submitted' || sub.status === 'resubmitted') && !isGraded);
+                  const isRevision = Boolean(sub && sub.status === 'revision_requested' && !isGraded);
+                  const hasAttachments = (task.attachments && task.attachments.length > 0) || Boolean(task.youtubeUrl);
+                  const { isUrgent, isPast } = isDeadlineNear(task.dueAt);
 
             return (
               <div
                 key={task.id}
                 className={`bg-white rounded-3xl border transition-all duration-200 overflow-hidden ${
-                  isExpanded
+                  isGraded
+                    ? isExpanded
+                      ? 'border-emerald-300 shadow-md ring-1 ring-emerald-500/10'
+                      : 'border-emerald-200/90 shadow-2xs hover:border-emerald-300 bg-gradient-to-r from-emerald-50/20 via-white to-white'
+                    : isExpanded
                     ? 'border-indigo-300 shadow-md ring-1 ring-indigo-500/10'
                     : 'border-slate-200/90 shadow-2xs hover:border-slate-300'
                 }`}
@@ -308,7 +374,7 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
                           : 'bg-indigo-600 text-white shadow-indigo-200'
                       }`}
                     >
-                      <CheckSquare className="w-6 h-6" />
+                      {isGraded ? <Award className="w-6 h-6" /> : <CheckSquare className="w-6 h-6" />}
                     </div>
 
                     <div className="min-w-0 space-y-1.5 flex-1">
@@ -326,10 +392,18 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
 
                         {/* Submission status tag */}
                         {isGraded ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Nilai: {sub?.score}/{task.maxScore}</span>
-                          </span>
+                          <>
+                            <span className="px-3 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white flex items-center gap-1.5 shadow-xs">
+                              <Award className="w-3.5 h-3.5" />
+                              <span>Sudah Dinilai: {sub?.score}/{task.maxScore}</span>
+                            </span>
+                            {sub?.feedback && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                <MessageSquare className="w-3 h-3 text-emerald-600" />
+                                <span>Ada Ulasan Guru</span>
+                              </span>
+                            )}
+                          </>
                         ) : isSubmitted ? (
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
                             Diserahkan
@@ -361,6 +435,19 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
 
                       {/* Metadata */}
                       <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
+                        {isGraded ? (
+                          <span className="flex items-center gap-1.5 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            <Award className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Nilai Akhir: <strong>{sub?.score}/{task.maxScore}</strong></span>
+                          </span>
+                        ) : (
+                          <span className="font-medium text-slate-700">
+                            Maks: {task.maxScore > 0 ? `${task.maxScore} Poin` : 'Tidak Dinilai'}
+                          </span>
+                        )}
+
+                        <span className="text-slate-300">•</span>
+
                         {task.dueAt ? (
                           <span className={`flex items-center gap-1.5 font-medium ${isPast && !sub ? 'text-rose-600 font-bold' : isUrgent && !sub ? 'text-orange-600 font-bold' : 'text-slate-600'}`}>
                             <Clock className="w-3.5 h-3.5" />
@@ -372,15 +459,16 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
 
                         <span className="text-slate-300">•</span>
 
-                        <span className="font-medium text-slate-700">
-                          Maks: {task.maxScore > 0 ? `${task.maxScore} Poin` : 'Tidak Dinilai'}
+                        <span className="flex items-center gap-1 font-bold text-amber-700" title="Hadiah Poin Leaderboard & Reward Guru">
+                          <PointIcon className="w-3 h-3" />
+                          <span>+{task.rewardPoints} Pts</span>
                         </span>
 
                         <span className="text-slate-300">•</span>
 
-                        <span className="flex items-center gap-1 font-bold text-amber-700">
-                          <PointIcon className="w-3 h-3" />
-                          <span>+{task.rewardPoints} XP</span>
+                        <span className="flex items-center gap-1 font-bold text-indigo-700" title="Hadiah XP Naik Level">
+                          <Sparkles className="w-3 h-3 text-indigo-600" />
+                          <span>+{task.rewardXp !== undefined ? task.rewardXp : task.rewardPoints} XP</span>
                         </span>
                       </div>
                     </div>
@@ -396,7 +484,7 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
                       }}
                       className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer ${
                         isGraded
-                          ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                          ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-md shadow-emerald-200 font-black'
                           : isSubmitted
                           ? 'bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200'
                           : isRevision
@@ -407,7 +495,7 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
                       {isGraded ? (
                         <>
                           <Award className="w-4 h-4" />
-                          <span>Lihat Nilai & Kiriman</span>
+                          <span>Nilai: {sub?.score}/{task.maxScore} • Lihat Hasil</span>
                         </>
                       ) : isSubmitted ? (
                         <>
@@ -436,6 +524,50 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
                 {/* Expanded Details Body */}
                 {isExpanded && (
                   <div className="border-t border-slate-100 bg-slate-50/50 p-5 sm:p-6 space-y-5">
+                    {/* Hasil Penilaian Guru (Jika sudah dinilai) */}
+                    {isGraded && (
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 border-2 border-emerald-300 shadow-sm space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
+                              <Award className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                                Hasil Penilaian Guru
+                              </span>
+                              <h4 className="text-lg sm:text-xl font-black text-emerald-950 font-display">
+                                Nilai Kamu: {sub?.score} / {task.maxScore}
+                              </h4>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black px-3 py-1.5 rounded-xl bg-emerald-700 text-white shadow-xs inline-flex items-center gap-1.5">
+                              <PointIcon className="w-3.5 h-3.5" />
+                              <span>+{task.rewardPoints} XP Diperoleh</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {sub?.feedback && (
+                          <div className="p-3.5 bg-white rounded-xl border border-emerald-200 text-xs sm:text-sm text-slate-800 space-y-1">
+                            <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
+                              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Catatan & Ulasan dari Guru:</span>
+                            </div>
+                            <p className="leading-relaxed font-medium pl-5 text-slate-700">{sub.feedback}</p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] text-emerald-700 font-semibold pt-1">
+                          <span>Status: Tugas Selesai & Dinilai Lengkap</span>
+                          {sub?.gradedAt && (
+                            <span>Dinilai pada: {formatDateIndo(sub.gradedAt)}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Teacher's Instructions */}
                     <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
                       <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
@@ -563,10 +695,28 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
                       <button
                         type="button"
                         onClick={() => setActiveModalAssignment(task)}
-                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        className={`px-5 py-2.5 rounded-xl active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          isGraded
+                            ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                            : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                        }`}
                       >
-                        <Upload className="w-4 h-4" />
-                        <span>{isSubmitted ? 'Buka Kiriman Tugas' : 'Buka & Kerjakan Tugas'}</span>
+                        {isGraded ? (
+                          <>
+                            <Award className="w-4 h-4" />
+                            <span>Lihat Detail Nilai & Berkas</span>
+                          </>
+                        ) : isSubmitted ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Buka Kiriman Tugas</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4" />
+                            <span>Buka & Kerjakan Tugas</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -575,7 +725,10 @@ export const StudentClasswork: React.FC<StudentClassworkProps> = ({
             );
           })}
         </div>
-      )}
+      </div>
+    ))}
+  </div>
+)}
 
       {/* Student Assignment Detail & Submission Modal */}
       {activeModalAssignment && (

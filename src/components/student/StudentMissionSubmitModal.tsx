@@ -79,6 +79,28 @@ export const StudentMissionSubmitModal: React.FC<StudentMissionSubmitModalProps>
 
         {/* Body Form */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
+          {mission.rewardMode === 'manual_verification' ? (
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+              <span className="text-base shrink-0">🛡️</span>
+              <div>
+                <p className="font-bold">Misi Membutuhkan Verifikasi Guru</p>
+                <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                  Setelah mengirim laporan bukti ini, guru akan memeriksa dan memberikan nilai serta poin secara langsung (poin tidak diklaim mandiri).
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2.5">
+              <span className="text-base shrink-0">⚡</span>
+              <div>
+                <p className="font-bold">Klaim Poin Otomatis</p>
+                <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                  Setelah mengirim laporan bukti ini, misi akan otomatis selesai dan kamu dapat langsung mengklaim reward poinnya.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
               Catatan / Laporan Pengerjaan Misi <span className="text-rose-500">*</span>

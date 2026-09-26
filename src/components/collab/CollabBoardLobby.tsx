@@ -155,48 +155,13 @@ export const CollabBoardLobby: React.FC<CollabBoardLobbyProps> = ({ onSelectBoar
   });
 
   return (
-    <div className="w-full h-full min-h-screen bg-slate-50 flex flex-col overflow-y-auto">
-      {/* Top Navbar in Fullscreen Mode */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-3 flex items-center justify-between shadow-2xs">
-        <div className="flex items-center gap-3">
-          {onExit && (
-            <button
-              type="button"
-              onClick={onExit}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm transition-colors cursor-pointer border border-slate-200/60"
-              title="Kembali ke Menu Utama"
-            >
-              <ArrowLeft className="w-4 h-4 text-slate-600" />
-              <span>Menu Utama</span>
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-900 text-sm sm:text-base">Papan Ide Kolaboratif</span>
-            {currentClass && (
-              <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-semibold border border-indigo-100 hidden sm:inline-block">
-                {currentClass.name}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium hidden md:inline">
-            Mode Layar Penuh
-          </span>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-            {isTeacher ? 'Guru' : 'Siswa'}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        {/* Header Banner */}
+    <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto">
+      {/* Header Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-600 p-6 sm:p-10 text-white shadow-xl">
         <div className="relative z-10 max-w-2xl space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs sm:text-sm font-semibold text-white">
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Papan Ide • Kolaborasi Digital Siswa & Guru</span>
+            <span>Ruang Kolaborasi • Kolaborasi Digital Siswa & Guru</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
             Ruang Curah Gagasan & Visual Bersama
@@ -274,10 +239,10 @@ export const CollabBoardLobby: React.FC<CollabBoardLobbyProps> = ({ onSelectBoar
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
-              Papan Ide {currentClass?.name || 'Kelas Kita'}
+              Ruang Kolaborasi {currentClass?.name || 'Kelas Kita'}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              Pilih papan yang sedang aktif untuk mulai berkolaborasi.
+              Pilih ruang kolaborasi yang sedang aktif untuk mulai berdiskusi.
             </p>
           </div>
 
@@ -296,18 +261,18 @@ export const CollabBoardLobby: React.FC<CollabBoardLobbyProps> = ({ onSelectBoar
         {/* Board Cards Grid */}
         {filteredBoards.length === 0 ? (
           <EmptyState
-            title={searchQuery ? 'Papan tidak ditemukan' : 'Belum ada Papan Ide'}
+            title={searchQuery ? 'Papan tidak ditemukan' : 'Belum ada Ruang Kolaborasi'}
             description={
               searchQuery
                 ? 'Tidak ada papan yang cocok dengan pencarian kata kunci Anda.'
                 : isTeacher
-                ? 'Mulai buat papan kolaborasi pertama untuk kelasmu dengan memilih salah satu template siap pakai!'
-                : 'Belum ada sesi papan ide aktif. Tunggu gurumu membagikan kode sesi atau membuat papan baru.'
+                ? 'Mulai buat ruang kolaborasi pertama untuk kelasmu dengan memilih salah satu template siap pakai!'
+                : 'Belum ada sesi ruang kolaborasi aktif. Tunggu gurumu membagikan kode sesi atau membuat papan baru.'
             }
             action={
               isTeacher && !searchQuery
                 ? {
-                    label: 'Buat Papan Ide Baru',
+                    label: 'Buat Ruang Kolaborasi Baru',
                     onClick: () => setShowCreateModal(true),
                   }
                 : undefined
@@ -397,7 +362,7 @@ export const CollabBoardLobby: React.FC<CollabBoardLobbyProps> = ({ onSelectBoar
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Buat Papan Ide Baru</h3>
+                  <h3 className="text-lg font-bold text-slate-900">Buat Ruang Kolaborasi Baru</h3>
                   <p className="text-xs text-slate-500">Pilih template dan buat sesi kolaborasi kelas</p>
                 </div>
               </div>
@@ -515,7 +480,6 @@ export const CollabBoardLobby: React.FC<CollabBoardLobbyProps> = ({ onSelectBoar
           onCancel={() => setBoardToDelete(null)}
         />
       )}
-      </div>
     </div>
   );
 };

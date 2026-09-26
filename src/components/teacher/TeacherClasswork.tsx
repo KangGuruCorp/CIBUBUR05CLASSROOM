@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Assignment, Submission } from '../../types';
-import { formatDateIndo } from '../../utils/gamification';
+import { formatDateIndo, formatDayAndDateIndo, getDateKey, getEffectiveTaskStatus } from '../../utils/gamification';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { EmptyState } from '../common/EmptyState';
 import { PointIcon } from '../common/PointIcon';
@@ -142,12 +142,43 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
 
       // Status
       if (selectedStatus !== 'all') {
-        if (task.status !== selectedStatus) return false;
+        const effective = getEffectiveTaskStatus(task.status, task.openAt);
+        if (effective !== selectedStatus) return false;
       }
 
       return true;
     });
   }, [classTasks, searchQuery, selectedTopic, selectedStatus]);
+
+  // Group tasks by publish / open date (kapan tugas terbit)
+  const groupedTasks = useMemo(() => {
+    const map = new Map<string, { dateLabel: string; tasks: Assignment[] }>();
+
+    // Sort newest publish date first
+    const sorted = [...filteredTasks].sort((a, b) => {
+      const dateA = new Date(a.openAt || a.createdAt || a.dueAt || 0).getTime();
+      const dateB = new Date(b.openAt || b.createdAt || b.dueAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    sorted.forEach((task) => {
+      const dateStr = task.openAt || task.createdAt || task.dueAt;
+      const key = getDateKey(dateStr);
+      const label = formatDayAndDateIndo(dateStr);
+
+      if (!map.has(key)) {
+        map.set(key, { dateLabel: label, tasks: [] });
+      }
+      map.get(key)!.tasks.push(task);
+    });
+
+    const list: { dateKey: string; dateLabel: string; tasks: Assignment[] }[] = [];
+    map.forEach((val, key) => {
+      list.push({ dateKey: key, dateLabel: val.dateLabel, tasks: val.tasks });
+    });
+
+    return list;
+  }, [filteredTasks]);
 
   // Calculate stats for a given task
   const getTaskStats = (task: Assignment) => {
@@ -329,11 +360,26 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
           }
         />
       ) : (
-        <div className="space-y-4">
-          {filteredTasks.map((task) => {
-            const isExpanded = expandedTaskId === task.id;
-            const stats = getTaskStats(task);
-            const hasAttachments = (task.attachments && task.attachments.length > 0) || task.youtubeUrl;
+        <div className="space-y-6">
+          {groupedTasks.map((group, groupIdx) => (
+            <div key={group.dateKey} className="space-y-3">
+              {/* Thin Date Separator with Day & Date */}
+              <div className={`flex items-center gap-3 ${groupIdx > 0 ? 'pt-4' : 'pt-1'} pb-1`}>
+                <div className="h-[1px] flex-1 bg-slate-200/90" />
+                <div className="flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-100/90 text-slate-500 text-[11px] font-semibold border border-slate-200/70 shadow-2xs shrink-0 select-none">
+                  <Calendar className="w-3 h-3 text-slate-400" />
+                  <span>{group.dateLabel}</span>
+                </div>
+                <div className="h-[1px] flex-1 bg-slate-200/90" />
+              </div>
+
+              {/* Tasks List for this date */}
+              <div className="space-y-4">
+                {group.tasks.map((task) => {
+                  const isExpanded = expandedTaskId === task.id;
+                  const stats = getTaskStats(task);
+                  const hasAttachments = (task.attachments && task.attachments.length > 0) || task.youtubeUrl;
+                  const effectiveStatus = getEffectiveTaskStatus(task.status, task.openAt);
 
             return (
               <div
@@ -352,9 +398,9 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
                   <div className="flex items-start gap-4 min-w-0">
                     <div
                       className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                        task.status === 'published'
+                        effectiveStatus === 'published'
                           ? 'bg-indigo-600 text-white shadow-indigo-200'
-                          : task.status === 'scheduled'
+                          : effectiveStatus === 'scheduled'
                           ? 'bg-amber-500 text-white shadow-amber-200'
                           : 'bg-slate-200 text-slate-600'
                       }`}
@@ -366,7 +412,7 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
                       {/* Pills */}
                       <div className="flex items-center gap-2 flex-wrap text-xs">
                         <span className="font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                          {task.subject}
+                           {task.subject}
                         </span>
 
                         {task.topic && (
@@ -375,7 +421,7 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
                           </span>
                         )}
 
-                        <StatusPill status={task.status} />
+                        <StatusPill status={effectiveStatus as any} />
 
                         {hasAttachments && (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 flex items-center gap-1">
@@ -411,9 +457,16 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
 
                         <span className="text-slate-300">•</span>
 
-                        <span className="flex items-center gap-1 font-bold text-amber-700">
+                        <span className="flex items-center gap-1 font-bold text-amber-700" title="Hadiah Poin Leaderboard">
                           <PointIcon className="w-3 h-3" />
-                          <span>+{task.rewardPoints} XP</span>
+                          <span>+{task.rewardPoints} Pts</span>
+                        </span>
+
+                        <span className="text-slate-300">•</span>
+
+                        <span className="flex items-center gap-1 font-bold text-indigo-700" title="Hadiah XP Leveling">
+                          <Sparkles className="w-3 h-3 text-indigo-600" />
+                          <span>+{task.rewardXp !== undefined ? task.rewardXp : task.rewardPoints} XP</span>
                         </span>
                       </div>
                     </div>
@@ -772,7 +825,10 @@ export const TeacherClasswork: React.FC<TeacherClassworkProps> = ({
             );
           })}
         </div>
-      )}
+      </div>
+    ))}
+  </div>
+)}
 
       {/* Editor Modal for Posting / Editing Tasks */}
       <ClassworkEditorModal

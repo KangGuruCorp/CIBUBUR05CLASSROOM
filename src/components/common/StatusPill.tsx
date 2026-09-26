@@ -26,9 +26,9 @@ export const StatusPill: React.FC<StatusPillProps> = ({ status, isLate }) => {
       );
     case 'graded':
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>Dinilai</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Sudah Dinilai</span>
         </span>
       );
     case 'submitted':

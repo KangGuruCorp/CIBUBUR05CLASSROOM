@@ -77,6 +77,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const [rotation, setRotation] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [pdfLoadError, setPdfLoadError] = useState<boolean>(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   // Sync initial index when modal opens or initialIndex changes
   useEffect(() => {
@@ -127,19 +128,42 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, handlePrev, handleNext]);
 
-  if (!isOpen || fileCount === 0 || !activeFile) return null;
-
-  const fileName = activeFile.name || 'Berkas Lampiran';
-  const fileType = activeFile.type || '';
+  const fileName = activeFile?.name || 'Berkas Lampiran';
+  const fileType = activeFile?.type || '';
   const isImg = isImageFile(fileName, fileType);
   const isPdf = isPdfFile(fileName, fileType);
   const isWord = isWordFile(fileName, fileType);
   const badge = getFileIconBadge(fileName, fileType);
 
-  const fileSource = activeFile.previewUrl || activeFile.url || '';
+  const fileSource = activeFile?.previewUrl || activeFile?.url || '';
   const isDataUrl = fileSource.startsWith('data:');
   const isBlobUrl = fileSource.startsWith('blob:');
   const isHttpUrl = fileSource.startsWith('http://') || fileSource.startsWith('https://');
+  const isLocalUrl = fileSource.startsWith('/');
+
+  // Convert base64 data URIs to blob URIs for PDFs to prevent browser blocking in iframe
+  useEffect(() => {
+    if (isPdf && isDataUrl) {
+      fetch(fileSource)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+        })
+        .catch((err) => {
+          console.warn('Failed to convert pdf data url to blob:', err);
+          setPdfBlobUrl(null);
+        });
+    } else {
+      setPdfBlobUrl(null);
+    }
+
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    };
+  }, [isPdf, isDataUrl, fileSource]);
+
+  const displayPdfSource = pdfBlobUrl || fileSource;
 
   const formatSize = () => {
     if (activeFile.sizeMB) return `${activeFile.sizeMB} MB`;
@@ -161,9 +185,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   };
   const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
 
+  if (!isOpen || fileCount === 0 || !activeFile) return null;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -352,10 +378,10 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
             {/* 2. PDF PREVIEW */}
             {isPdf && (
               <div className="w-full h-full flex flex-col items-center justify-center">
-                {fileSource && !pdfLoadError && (isDataUrl || isBlobUrl || isHttpUrl) ? (
+                {displayPdfSource && !pdfLoadError && (isDataUrl || isBlobUrl || isHttpUrl || isLocalUrl) ? (
                   <div className="w-full h-full max-w-4xl rounded-2xl overflow-hidden border border-slate-800 bg-white shadow-2xl">
                     <iframe
-                      src={fileSource}
+                      src={displayPdfSource}
                       title={fileName}
                       onError={() => setPdfLoadError(true)}
                       className="w-full h-full min-h-[550px] border-0"

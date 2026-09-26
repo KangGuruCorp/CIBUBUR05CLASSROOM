@@ -47,6 +47,8 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
   const filteredAssignments = assignments
     .filter((asg) => {
       if (asg.status === 'draft') return false;
+      if (asg.openAt && new Date(asg.openAt).getTime() > Date.now()) return false;
+      if (asg.status === 'scheduled' && (!asg.openAt || new Date(asg.openAt).getTime() > Date.now())) return false;
       if (asg.status !== 'published' && asg.status !== 'scheduled') return false;
 
       const sub = submissions[`${asg.id}_${currentUser.uid}`];
@@ -155,15 +157,18 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
               );
             const status = sub?.status || 'draft';
             const { isUrgent, isPast } = isDeadlineNear(asg.dueAt);
-            const isCompleted = status === 'graded' || status === 'submitted';
+            const isGraded = status === 'graded' || (sub?.score !== undefined && sub?.score !== null);
+            const isSubmitted = (status === 'submitted' || status === 'resubmitted') && !isGraded;
 
             return (
               <div
                 key={asg.id}
                 onClick={() => setActiveModalAssignment(asg)}
                 className={`group rounded-3xl border transition-all duration-300 p-5 sm:p-6 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-5 ${
-                  isCompleted
-                    ? 'bg-slate-50/80 border-slate-200 grayscale contrast-90 opacity-65 hover:opacity-100 hover:grayscale-0 shadow-xs'
+                  isGraded
+                    ? 'bg-gradient-to-r from-emerald-50/40 via-white to-white border-emerald-200 shadow-sm hover:border-emerald-300 hover:shadow-md'
+                    : isSubmitted
+                    ? 'bg-slate-50/80 border-slate-200 hover:border-blue-200 shadow-xs'
                     : 'bg-white border-indigo-100/90 hover:border-indigo-300 shadow-[0_0_20px_-3px_rgba(99,102,241,0.2)] hover:shadow-[0_0_28px_rgba(99,102,241,0.32)] ring-1 ring-indigo-400/20'
                 }`}
               >
@@ -183,11 +188,17 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                       <StatusPill status={status} isLate={sub?.isLate} />
                     </div>
 
-                    {/* Points indicator solely in the top-right corner */}
-                    <span className="text-xs font-black text-amber-800 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 flex items-center gap-1 shrink-0">
-                      <PointIcon className="w-3.5 h-3.5" />
-                      <span>+{asg.rewardPoints} Poin</span>
-                    </span>
+                    {/* Points & XP indicator in the top-right corner */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-xl border border-amber-200 flex items-center gap-1">
+                        <PointIcon className="w-3.5 h-3.5" />
+                        <span>+{asg.rewardPoints} Pts</span>
+                      </span>
+                      <span className="text-xs font-black text-purple-800 bg-purple-50 px-2 py-0.5 rounded-xl border border-purple-200 flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>+{asg.rewardXp ?? asg.rewardPoints} XP</span>
+                      </span>
+                    </div>
                   </div>
 
                   <h3 className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors font-display">

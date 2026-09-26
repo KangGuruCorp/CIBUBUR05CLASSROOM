@@ -73,9 +73,17 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
   const targetAssignment = propAssignment || assignments.find((a) => a.id === submission.assignmentId);
   const targetStudent = users.find((u) => u.uid === submission.userId) || (propStudentName ? ({ displayName: propStudentName } as any) : undefined);
 
-  const [score, setScore] = useState<number>(submission.score !== undefined ? submission.score : 85);
+  const initialScore = submission.score !== undefined ? submission.score : 85;
+  const [score, setScore] = useState<number>(initialScore);
   const [feedback, setFeedback] = useState<string>(submission.feedback || 'Pekerjaan sangat baik dan rapi!');
-  const [rewardPoints, setRewardPoints] = useState<number>(targetAssignment?.rewardPoints || 40);
+  const [rewardPoints, setRewardPoints] = useState<number>(initialScore);
+  const [rewardXp, setRewardXp] = useState<number>(initialScore);
+
+  const handleScoreChange = (newScore: number) => {
+    setScore(newScore);
+    setRewardPoints(newScore);
+    setRewardXp(newScore);
+  };
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [revisionFeedback, setRevisionFeedback] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,7 +95,7 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
     setIsSubmitting(true);
 
     setTimeout(() => {
-      gradeSubmission(submission.id, Number(score), feedback, Number(rewardPoints));
+      gradeSubmission(submission.id, Number(score), feedback, Number(rewardPoints), Number(rewardXp));
       setIsSubmitting(false);
       if (hasNext && onNavigateNext) {
         onNavigateNext();
@@ -387,11 +395,11 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Score Input */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nilai Siswa (Maks: {targetAssignment?.maxScore || 100})
+                    Nilai (Maks: {targetAssignment?.maxScore || 100})
                   </label>
                   <div className="relative">
                     <input
@@ -400,7 +408,7 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
                       min={0}
                       max={targetAssignment?.maxScore || 100}
                       value={score}
-                      onChange={(e) => setScore(Number(e.target.value))}
+                      onChange={(e) => handleScoreChange(Number(e.target.value))}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-extrabold text-slate-800 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
                     />
                   </div>
@@ -408,9 +416,9 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
 
                 {/* Point Reward Allocation */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1" title="Poin untuk peringkat Leaderboard & Reward Guru">
                     <PointIcon className="w-3.5 h-3.5" />
-                    <span>Reward Poin Nilai</span>
+                    <span>Reward Poin</span>
                   </label>
                   <div className="relative">
                     <input
@@ -420,7 +428,26 @@ export const TeacherGradingModal: React.FC<TeacherGradingModalProps> = ({
                       max={200}
                       value={rewardPoints}
                       onChange={(e) => setRewardPoints(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-extrabold text-amber-700 text-base focus:outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50/40"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-amber-200 font-extrabold text-amber-950 text-base focus:outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50/40"
+                    />
+                  </div>
+                </div>
+
+                {/* XP Reward Allocation */}
+                <div>
+                  <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1" title="XP untuk Kenaikan Level Siswa">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Reward XP</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={200}
+                      value={rewardXp}
+                      onChange={(e) => setRewardXp(Number(e.target.value))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-200 font-extrabold text-indigo-950 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-indigo-50/40"
                     />
                   </div>
                 </div>

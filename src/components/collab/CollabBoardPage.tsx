@@ -25,7 +25,7 @@ export const CollabBoardPage: React.FC = () => {
   if (!currentUser) return null;
 
   const handleExit = () => {
-    setActiveTab(currentUser.role === 'teacher' ? 'dashboard' : 'beranda');
+    setActiveTab('beranda');
   };
 
   if (activeBoard) {

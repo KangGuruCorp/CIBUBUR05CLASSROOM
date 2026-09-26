@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { HeroSection } from '../components/login/HeroSection';
 import { LoginCard } from '../components/login/LoginCard';
+import { UserRole } from '../types';
 
 export const LoginPage: React.FC = () => {
   const { switchUser } = useApp();
+  const [role, setRole] = useState<UserRole>('student');
 
   const handleLoginSuccess = (userId: string, role: 'student' | 'teacher') => {
     switchUser(userId);
@@ -54,7 +56,7 @@ export const LoginPage: React.FC = () => {
       <main className="relative z-10 w-full max-w-[1450px] mx-auto px-4 sm:px-6 lg:px-8 my-auto py-4 sm:py-6 lg:py-8 flex-1 flex flex-col justify-center">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           {/* Left Column: Login Card */}
-          <div className="lg:col-span-5 flex justify-center lg:justify-start w-full order-1 lg:order-1">
+          <div className="lg:col-span-5 flex justify-center lg:justify-start w-full order-1 lg:order-1 flex-col items-center lg:items-start gap-4">
             <LoginCard onLoginSuccess={handleLoginSuccess} />
           </div>
 

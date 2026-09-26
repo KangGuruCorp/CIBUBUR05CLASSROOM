@@ -15,6 +15,7 @@ import {
   List,
   ListOrdered,
   Paperclip,
+  Pencil,
   Plus,
   Search,
   Sparkles,
@@ -30,6 +31,7 @@ import { STANDARD_SUBJECTS } from '../../utils/materialTemplates';
 import { PointIcon } from '../common/PointIcon';
 import { YouTubeEmbed } from '../common/YouTubeEmbed';
 import { getYouTubeVideoId } from '../../utils/youtube';
+import { uploadFileToServer } from '../../lib/fileUploadService';
 
 interface ClassworkEditorModalProps {
   isOpen: boolean;
@@ -45,13 +47,14 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
   onClose,
   editingItem = null,
 }) => {
-  const { currentClassId, classes, users, saveAssignment, assignments } = useApp();
+  const { currentClassId, classes, users, saveAssignment, assignments, quizzes = [] } = useApp();
 
   // Core content fields
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
   const [subject, setSubject] = useState('Matematika');
   const [topic, setTopic] = useState('');
+  const [linkedQuizId, setLinkedQuizId] = useState('');
   const [isCreatingNewTopic, setIsCreatingNewTopic] = useState(false);
   const [newTopicName, setNewTopicName] = useState('');
 
@@ -62,10 +65,14 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkInputUrl, setLinkInputUrl] = useState('');
   const [linkInputTitle, setLinkInputTitle] = useState('');
+  const [editingLinkIdx, setEditingLinkIdx] = useState<number | null>(null);
+  const [linkEditTitle, setLinkEditTitle] = useState('');
+  const [linkEditUrl, setLinkEditUrl] = useState('');
 
   // Settings
   const [maxScore, setMaxScore] = useState<number | 'ungraded'>(100);
   const [rewardPoints, setRewardPoints] = useState(50);
+  const [rewardXp, setRewardXp] = useState(50);
   const [hasDueDate, setHasDueDate] = useState(true);
   const [dueAt, setDueAt] = useState('');
   const [openAt, setOpenAt] = useState('');
@@ -159,11 +166,13 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
       setAttachments(data.attachments || []);
       setYoutubeUrl(data.youtubeUrl || '');
       setRewardPoints(data.rewardPoints ?? 50);
+      setRewardXp(data.rewardXp ?? (data.rewardPoints ?? 50));
       setStatus(data.status === 'closed' || data.status === 'archived' ? 'published' : data.status);
       setMaxScore(data.maxScore ?? 100);
       setHasDueDate(Boolean(data.dueAt));
       setAllowLate(data.allowLate ?? true);
       setAllowRevision(data.allowRevision ?? true);
+      setLinkedQuizId(data.linkedQuizId || '');
 
       if (data.dueAt) {
         try {
@@ -206,9 +215,11 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
       setYoutubeUrl('');
       setMaxScore(100);
       setRewardPoints(50);
+      setRewardXp(50);
       setHasDueDate(true);
       setAllowLate(true);
       setAllowRevision(true);
+      setLinkedQuizId('');
       setStatus('published');
 
       // Default due date: tomorrow 23:59
@@ -252,29 +263,26 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
   };
 
   // Handle local file uploads (PDF, docs, images)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const fileUrl = event.target?.result as string;
-        let fileType: 'pdf' | 'doc' | 'image' | 'video' = 'pdf';
-        if (file.type.startsWith('image/')) fileType = 'image';
-        else if (file.type.includes('pdf')) fileType = 'pdf';
-        else if (file.type.includes('word') || file.name.endsWith('.doc') || file.name.endsWith('.docx')) fileType = 'doc';
+    for (const file of Array.from(files)) {
+      let fileType: 'pdf' | 'doc' | 'image' | 'video' = 'pdf';
+      if (file.type.startsWith('image/')) fileType = 'image';
+      else if (file.type.includes('pdf')) fileType = 'pdf';
+      else if (file.type.includes('word') || file.name.endsWith('.doc') || file.name.endsWith('.docx')) fileType = 'doc';
 
-        const newAtt: MaterialAttachment = {
-          name: file.name,
-          type: fileType,
-          url: fileUrl,
-          sizeMB: Number((file.size / (1024 * 1024)).toFixed(2)),
-        };
-        setAttachments((prev) => [...prev, newAtt]);
+      const fileUrl = await uploadFileToServer(file, 'attachments');
+
+      const newAtt: MaterialAttachment = {
+        name: file.name,
+        type: fileType,
+        url: fileUrl,
+        sizeMB: Number((file.size / (1024 * 1024)).toFixed(2)),
       };
-      reader.readAsDataURL(file);
-    });
+      setAttachments((prev) => [...prev, newAtt]);
+    }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -377,10 +385,12 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
       youtubeUrl: youtubeUrl.trim() || undefined,
       maxScore: maxScore === 'ungraded' ? 0 : Number(maxScore),
       rewardPoints: Number(rewardPoints),
+      rewardXp: Number(rewardXp),
       dueAt: hasDueDate && dueAt ? new Date(dueAt).toISOString() : '',
       openAt: openAt ? new Date(openAt).toISOString() : new Date().toISOString(),
       allowLate: allowLate,
       allowRevision: allowRevision,
+      linkedQuizId: linkedQuizId.trim() || undefined,
       status: status,
       attachmentRules: {
         allowedTypes: [
@@ -756,36 +766,130 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
               {attachments.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
                   {attachments.map((att, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                          {att.type === 'link' ? (
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          ) : att.type === 'image' ? (
-                            <ImageIcon className="w-3.5 h-3.5" />
-                          ) : (
-                            <FileText className="w-3.5 h-3.5" />
-                          )}
+                    <div key={idx}>
+                      {/* Inline edit form for link */}
+                      {att.type === 'link' && editingLinkIdx === idx ? (
+                        <div className="p-3 bg-white border border-blue-200 rounded-xl space-y-2 shadow-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800">Edit Tautan</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditingLinkIdx(null)}
+                              className="text-slate-400 hover:text-slate-600 p-0.5"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={linkEditTitle}
+                              onChange={(e) => setLinkEditTitle(e.target.value)}
+                              placeholder="Judul Tautan (Opsional)"
+                              className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              value={linkEditUrl}
+                              onChange={(e) => setLinkEditUrl(e.target.value)}
+                              placeholder="https://..."
+                              className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingLinkIdx(null)}
+                              className="px-2.5 py-1 text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                            >
+                              Batal
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!linkEditUrl.trim()}
+                              onClick={() => {
+                                if (!linkEditUrl.trim()) return;
+                                let url = linkEditUrl.trim();
+                                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                                  url = 'https://' + url;
+                                }
+                                setAttachments((prev) =>
+                                  prev.map((a, i) =>
+                                    i === idx
+                                      ? { ...a, name: linkEditTitle.trim() || url, url }
+                                      : a
+                                  )
+                                );
+                                setEditingLinkIdx(null);
+                              }}
+                              className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-semibold transition-colors cursor-pointer"
+                            >
+                              Simpan
+                            </button>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">{att.name}</p>
-                          <p className="text-[10px] text-slate-400 uppercase">
-                            {att.type} {att.sizeMB ? `• ${att.sizeMB} MB` : ''}
-                          </p>
-                        </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                              {att.type === 'link' ? (
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              ) : att.type === 'image' ? (
+                                <ImageIcon className="w-3.5 h-3.5" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              {att.type === 'link' && att.url ? (
+                                <a
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-bold text-blue-600 hover:underline truncate block"
+                                  title={att.url}
+                                >
+                                  {att.name}
+                                </a>
+                              ) : (
+                                <p className="text-xs font-bold text-slate-800 truncate">{att.name}</p>
+                              )}
+                              <p className="text-[10px] text-slate-400 uppercase">
+                                {att.type} {att.sizeMB ? `• ${att.sizeMB} MB` : ''}
+                                {att.type === 'link' && att.url && (
+                                  <span className="normal-case ml-1 text-slate-300">— {att.url.length > 30 ? att.url.substring(0, 30) + '…' : att.url}</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Hapus Lampiran"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {att.type === 'link' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLinkIdx(idx);
+                                  setLinkEditTitle(att.name === att.url ? '' : att.name);
+                                  setLinkEditUrl(att.url || '');
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                title="Edit Tautan"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Hapus Lampiran"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1008,31 +1112,109 @@ export const ClassworkEditorModal: React.FC<ClassworkEditorModalProps> = ({
                   </div>
                 </div>
 
-                {/* Hadiah Poin XP Gamifikasi */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                    <span>Hadiah Poin XP Gamifikasi</span>
-                    <span className="text-[11px] text-amber-700 font-bold flex items-center gap-1">
-                      <PointIcon className="w-3.5 h-3.5" />
-                      <span>+{rewardPoints} XP</span>
-                    </span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    {[25, 50, 75, 100].map((pts) => (
-                      <button
-                        key={pts}
-                        type="button"
-                        onClick={() => setRewardPoints(pts)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
-                          rewardPoints === pts
-                            ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        +{pts} XP
-                      </button>
-                    ))}
+                {/* Hadiah Poin & XP Gamifikasi */}
+                <div className="space-y-3">
+                  {/* Hadiah Poin (Leaderboard & Reward Guru) */}
+                  <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80">
+                    <label className="block text-xs font-bold text-amber-950 mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <PointIcon className="w-3.5 h-3.5" />
+                        <span>Hadiah Poin (Leaderboard)</span>
+                      </span>
+                      <span className="text-[11px] text-amber-800 font-extrabold">
+                        +{rewardPoints} Pts
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[15, 25, 50, 100].map((pts) => (
+                        <button
+                          key={pts}
+                          type="button"
+                          onClick={() => setRewardPoints(pts)}
+                          className={`py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            rewardPoints === pts
+                              ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-2xs font-black'
+                              : 'bg-white border-amber-200/70 text-slate-700 hover:bg-amber-100/50'
+                          }`}
+                        >
+                          +{pts}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-amber-800/80 mt-1.5">
+                      Poin dikumpulkan untuk juara peringkat kelas & reward guru.
+                    </p>
                   </div>
+
+                  {/* Hadiah XP (Kenaikan Level) */}
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80">
+                    <label className="block text-xs font-bold text-indigo-950 mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Hadiah XP (Naik Level)</span>
+                      </span>
+                      <span className="text-[11px] text-indigo-800 font-extrabold">
+                        +{rewardXp} XP
+                      </span>
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[25, 50, 75, 100].map((xpVal) => (
+                        <button
+                          key={xpVal}
+                          type="button"
+                          onClick={() => setRewardXp(xpVal)}
+                          className={`py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            rewardXp === xpVal
+                              ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs font-black'
+                              : 'bg-white border-indigo-200/70 text-slate-700 hover:bg-indigo-100/50'
+                          }`}
+                        >
+                          +{xpVal}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-indigo-800/80 mt-1.5">
+                      XP digunakan siswa untuk meningkatkan level prestasi (Lvl 1 - 5).
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hubungkan dengan Kuis (Linked Quiz) */}
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/90 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                    <LinkIcon className="w-4 h-4 text-indigo-600" />
+                    <span>Hubungkan dengan Kuis (Opsional)</span>
+                  </label>
+                  {linkedQuizId && (
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                      🔗 Kuis Terhubung
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Setelah murid selesai mengirimkan tugas ini, mereka akan langsung diarahkan untuk mengerjakan kuis yang dipilih.
+                </p>
+                <div className="pt-1">
+                  <select
+                    value={linkedQuizId}
+                    onChange={(e) => setLinkedQuizId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-white text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs cursor-pointer"
+                  >
+                    <option value="">-- Tidak Dihubungkan / Tugas Mandiri --</option>
+                    {quizzes
+                      .filter(
+                        (q) =>
+                          q.status !== 'archived' &&
+                          (q.classIds?.length ? q.classIds.includes(currentClassId) : true)
+                      )
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          [{q.subject}] {q.title} ({q.questions.length} Soal)
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
 

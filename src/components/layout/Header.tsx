@@ -12,6 +12,7 @@ import {
   User,
   UserCheck,
   Users,
+  Save,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getLevelInfo } from '../../utils/gamification';
@@ -40,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
     levels = [],
     notifications = [],
     isFirebaseSynced,
+    syncAllToCloud,
   } = useApp();
 
   const handleOpenNotif = onOpenNotificationModal || onOpenNotifications || (() => {});
@@ -52,8 +54,9 @@ export const Header: React.FC<HeaderProps> = ({
   }
 
   const safeNotifications = notifications || [];
-  const stats = (userStats && userStats[currentUser.uid]) || { totalPoints: 0, level: 1 };
-  const levelInfo = getLevelInfo(stats.totalPoints, levels);
+  const stats = (userStats && userStats[currentUser.uid]) || { totalPoints: 0, totalXp: 0, level: 1 };
+  const studentXp = stats.totalXp !== undefined ? stats.totalXp : (stats.totalPoints || 0);
+  const levelInfo = getLevelInfo(studentXp, levels);
   const unreadCount = safeNotifications.filter((n) => n && n.userId === currentUser.uid && !n.isRead).length;
 
   const safeClasses = classes || [];
@@ -65,15 +68,20 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 sm:h-18">
           {/* Brand */}
           <div className="flex items-center gap-2.5 sm:gap-3.5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-[#101936] tracking-tight text-base sm:text-lg font-display">
-                  GamifiClass
-                </span>
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#364FFF]/15 to-[#8B20FF]/15 text-[#364FFF] border border-[#A66CFF]/30">
-                  {currentClass?.name || 'KELAS 6E'}
-                </span>
-              </div>
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <img
+                src="https://i.ibb.co.com/XrCv2wfM/Chat-GPT-Image-5-Sep-2026-22-21-34.png"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = '/gamificlass-logo.png';
+                }}
+                alt="GamifiClass"
+                className="h-7 sm:h-8 md:h-8.5 w-auto object-contain select-none"
+                loading="eager"
+                referrerPolicy="no-referrer"
+              />
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#364FFF]/15 to-[#8B20FF]/15 text-[#364FFF] border border-[#A66CFF]/30">
+                {currentClass?.name || 'KELAS 6E'}
+              </span>
             </div>
           </div>
 
@@ -122,19 +130,35 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            {/* Student Points & Level Pill (Mobile/Desktop) */}
+            {/* Student Points (Leaderboard) & Level/XP Pill */}
             {currentRole === 'student' && (
-              <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#FFD83D]/20 to-amber-500/10 border border-[#FFD83D]/50 text-[#101936] shadow-xs">
-                <PointIcon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xs sm:text-sm font-black text-[#101936]">
-                    {stats.totalPoints}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Points Pill (Leaderboard) */}
+                <div 
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#FFD83D]/25 to-amber-500/15 border border-[#FFD83D]/60 text-[#101936] shadow-xs"
+                  title="Poin untuk Peringkat Leaderboard & Reward Guru"
+                >
+                  <PointIcon className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs sm:text-sm font-black text-[#101936]">
+                      {stats.totalPoints || 0}
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-800 hidden sm:inline">
+                      Poin
+                    </span>
+                  </div>
+                </div>
+
+                {/* Level Pill (XP) - Hidden on Mobile View */}
+                <div 
+                  className="hidden sm:flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-indigo-50 border border-indigo-200/80 text-indigo-900 shadow-xs"
+                  title={`Level ${levelInfo.currentLevel.level} • ${studentXp} XP`}
+                >
+                  <span className="text-xs sm:text-sm font-black text-indigo-700">
+                    Lvl {levelInfo.currentLevel.level}
                   </span>
-                  <span className="text-[10px] font-bold text-amber-700 hidden sm:inline">
-                    Poin • Lvl {levelInfo.currentLevel.level}
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-700 sm:hidden">
-                    pt
+                  <span className="text-[10px] font-bold text-indigo-500 hidden md:inline">
+                    ({studentXp} XP)
                   </span>
                 </div>
               </div>
@@ -237,19 +261,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </>
               )}
             </div>
-
-            {/* Direct quick logout button for instant access */}
-            <button
-              type="button"
-              onClick={() => {
-                logoutUser();
-              }}
-              title="Keluar dari akun (Logout)"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-bold transition-colors cursor-pointer"
-            >
-              <LogOut className="w-4 h-4 text-rose-500" />
-              <span className="hidden lg:inline">Keluar</span>
-            </button>
           </div>
         </div>
       </div>

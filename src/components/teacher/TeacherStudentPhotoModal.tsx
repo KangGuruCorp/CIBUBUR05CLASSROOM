@@ -13,6 +13,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { User as UserType } from '../../types';
 import { ImageCropModal } from '../common/ImageCropModal';
+import { uploadDataUrlToServer } from '../../lib/fileUploadService';
 
 interface TeacherStudentPhotoModalProps {
   isOpen: boolean;
@@ -104,18 +105,34 @@ export const TeacherStudentPhotoModal: React.FC<TeacherStudentPhotoModalProps> =
     setErrorMessage('');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!previewUrl) {
       setErrorMessage('Pilih atau unggah foto profil terlebih dahulu.');
       return;
     }
 
-    updateStudentPhoto(student.uid, previewUrl);
-    setSuccessMessage('Foto profil siswa berhasil disimpan dan diperbarui!');
+    setIsProcessing(true);
+    setErrorMessage('');
 
-    setTimeout(() => {
-      onClose();
-    }, 900);
+    try {
+      let finalPhotoUrl = previewUrl;
+      if (previewUrl.startsWith('data:')) {
+        const fileName = `${student.username || student.uid}_photo.jpg`;
+        finalPhotoUrl = await uploadDataUrlToServer(previewUrl, fileName, 'avatars');
+      }
+
+      updateStudentPhoto(student.uid, finalPhotoUrl);
+      setSuccessMessage('Foto profil siswa berhasil disimpan dan diperbarui!');
+
+      setTimeout(() => {
+        setIsProcessing(false);
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      console.error('Error saving student photo:', err);
+      setErrorMessage(err?.message || 'Gagal menyimpan foto siswa.');
+      setIsProcessing(false);
+    }
   };
 
   return (

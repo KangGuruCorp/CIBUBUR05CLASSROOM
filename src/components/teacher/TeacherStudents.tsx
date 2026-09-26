@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User, UserStats } from '../../types';
+import { uploadDataUrlToServer } from '../../lib/fileUploadService';
 import { formatDateIndo, getLevelInfo } from '../../utils/gamification';
 import { BadgeIcon } from '../common/BadgeIcon';
 import { LevelBadge } from '../common/LevelBadge';
@@ -175,9 +176,14 @@ export const TeacherStudents: React.FC = () => {
     }
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingStudent || !editName.trim()) return;
+
+    let finalAvatar = editAvatarUrl.trim() || editingStudent.avatarUrl;
+    if (finalAvatar && finalAvatar.startsWith('data:')) {
+      finalAvatar = await uploadDataUrlToServer(finalAvatar, `${editingStudent.username || editingStudent.uid}_avatar.jpg`, 'avatars');
+    }
 
     updateStudent(editingStudent.uid, {
       displayName: editName.trim(),
@@ -186,7 +192,7 @@ export const TeacherStudents: React.FC = () => {
       username: editUsername.trim() || undefined,
       password: editPassword.trim() || '123456',
       email: editEmail.trim() || undefined,
-      avatarUrl: editAvatarUrl.trim() || editingStudent.avatarUrl,
+      avatarUrl: finalAvatar,
     });
 
     setEditingStudent(null);
@@ -339,7 +345,7 @@ export const TeacherStudents: React.FC = () => {
               updatedAt: new Date().toISOString(),
             };
 
-            const levelInfo = getLevelInfo(stats.totalPoints, levels);
+            const levelInfo = getLevelInfo(stats.totalXp ?? stats.totalPoints, levels);
             const isMenuOpen = activeMenuStudentId === student.uid;
 
             return (
@@ -405,10 +411,10 @@ export const TeacherStudents: React.FC = () => {
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                   {/* Status Level & Poin */}
                   <div className="flex items-center gap-1.5 sm:gap-2">
-                    <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200/70 whitespace-nowrap">
-                      Lvl {levelInfo.currentLevel.level}
+                    <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-xl border border-purple-200/70 whitespace-nowrap" title="Level Akumulasi XP">
+                      Lvl {levelInfo.currentLevel.level} • {stats.totalXp ?? stats.totalPoints} XP
                     </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-100/80 text-amber-950 font-black text-xs whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-100/80 text-amber-950 font-black text-xs whitespace-nowrap" title="Poin Leaderboard & Reward">
                       <PointIcon className="w-3.5 h-3.5" />
                       <span>{stats.totalPoints} Pts</span>
                     </span>
@@ -536,7 +542,7 @@ export const TeacherStudents: React.FC = () => {
               updatedAt: new Date().toISOString(),
             };
 
-            const levelInfo = getLevelInfo(stats.totalPoints, levels);
+            const levelInfo = getLevelInfo(stats.totalXp ?? stats.totalPoints, levels);
             const isMenuOpen = activeMenuStudentId === student.uid;
 
             return (
@@ -576,7 +582,7 @@ export const TeacherStudents: React.FC = () => {
                       </div>
                     </div>
 
-                    <span className="text-xs font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shrink-0">
+                    <span className="text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-1 rounded-xl border border-purple-200 shrink-0" title="Level Siswa">
                       Lvl {levelInfo.currentLevel.level}
                     </span>
                   </div>
@@ -584,8 +590,8 @@ export const TeacherStudents: React.FC = () => {
                   {/* Level & Poin */}
                   <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-bold text-slate-700 truncate">{levelInfo.currentLevel.name}</span>
-                      <span className="font-black text-amber-700 flex items-center gap-1 shrink-0">
+                      <span className="font-bold text-slate-700 truncate">{levelInfo.currentLevel.name} ({stats.totalXp ?? stats.totalPoints} XP)</span>
+                      <span className="font-black text-amber-700 flex items-center gap-1 shrink-0" title="Poin Leaderboard & Reward">
                         <PointIcon className="w-3 h-3" />
                         <span>{stats.totalPoints} Pts</span>
                       </span>

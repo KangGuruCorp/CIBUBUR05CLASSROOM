@@ -6,6 +6,8 @@ export const DEFAULT_LEVELS: LevelConfig[] = [
     level: 1,
     minPoints: 0,
     maxPoints: 99,
+    minXp: 0,
+    maxXp: 99,
     name: 'Penjelajah',
     badgeIcon: 'Compass',
     color: 'from-amber-400 to-orange-500',
@@ -14,6 +16,8 @@ export const DEFAULT_LEVELS: LevelConfig[] = [
     level: 2,
     minPoints: 100,
     maxPoints: 249,
+    minXp: 100,
+    maxXp: 249,
     name: 'Pembelajar Aktif',
     badgeIcon: 'BookOpen',
     color: 'from-emerald-400 to-teal-600',
@@ -22,6 +26,8 @@ export const DEFAULT_LEVELS: LevelConfig[] = [
     level: 3,
     minPoints: 250,
     maxPoints: 449,
+    minXp: 250,
+    maxXp: 449,
     name: 'Pemecah Masalah',
     badgeIcon: 'Zap',
     color: 'from-sky-400 to-blue-600',
@@ -30,6 +36,8 @@ export const DEFAULT_LEVELS: LevelConfig[] = [
     level: 4,
     minPoints: 450,
     maxPoints: 699,
+    minXp: 450,
+    maxXp: 699,
     name: 'Bintang Kelas',
     badgeIcon: 'Star',
     color: 'from-indigo-500 to-purple-600',
@@ -38,22 +46,29 @@ export const DEFAULT_LEVELS: LevelConfig[] = [
     level: 5,
     minPoints: 700,
     maxPoints: 1500,
+    minXp: 700,
+    maxXp: 1500,
     name: 'Inspirator',
     badgeIcon: 'Crown',
     color: 'from-rose-500 to-amber-500',
   },
 ];
 
-export function getLevelInfo(points: number, levels: LevelConfig[] = DEFAULT_LEVELS): {
+export function getLevelInfo(xpOrPoints: number, levels: LevelConfig[] = DEFAULT_LEVELS): {
   currentLevel: LevelConfig;
   nextLevel: LevelConfig | null;
   progressPercent: number;
   pointsToNext: number;
+  xpToNext: number;
 } {
+  const currentVal = Math.max(0, xpOrPoints || 0);
+
+  const getMin = (lvl: LevelConfig) => (lvl.minXp !== undefined ? lvl.minXp : lvl.minPoints);
+
   const currentLevel =
     [...levels]
       .reverse()
-      .find((lvl) => points >= lvl.minPoints) || levels[0];
+      .find((lvl) => currentVal >= getMin(lvl)) || levels[0];
 
   const nextLevel = levels.find((lvl) => lvl.level === currentLevel.level + 1) || null;
 
@@ -63,19 +78,23 @@ export function getLevelInfo(points: number, levels: LevelConfig[] = DEFAULT_LEV
       nextLevel: null,
       progressPercent: 100,
       pointsToNext: 0,
+      xpToNext: 0,
     };
   }
 
-  const range = nextLevel.minPoints - currentLevel.minPoints;
-  const currentInRange = points - currentLevel.minPoints;
-  const progressPercent = Math.min(100, Math.max(0, Math.round((currentInRange / range) * 100)));
-  const pointsToNext = Math.max(0, nextLevel.minPoints - points);
+  const curMin = getMin(currentLevel);
+  const nextMin = getMin(nextLevel);
+  const range = nextMin - curMin;
+  const currentInRange = currentVal - curMin;
+  const progressPercent = range > 0 ? Math.min(100, Math.max(0, Math.round((currentInRange / range) * 100))) : 100;
+  const toNext = Math.max(0, nextMin - currentVal);
 
   return {
     currentLevel,
     nextLevel,
     progressPercent,
-    pointsToNext,
+    pointsToNext: toNext,
+    xpToNext: toNext,
   };
 }
 
@@ -195,3 +214,89 @@ export function isDeadlineNear(dueAtStr: string): { isUrgent: boolean; isPast: b
     return { isUrgent: false, isPast: false, diffHours: 999 };
   }
 }
+
+/**
+ * Formats a date string into "Hari, Tanggal Bulan Tahun" in Indonesian.
+ * E.g.: "Senin, 7 September 2026", "Selasa, 8 September 2026"
+ */
+export function formatDayAndDateIndo(dateStr: string | Date | undefined): string {
+  if (!dateStr) return 'Tanggal Lainnya';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Tanggal Lainnya';
+
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const monthNames = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+
+    const dayName = dayNames[d.getDay()];
+    const date = d.getDate();
+    const monthName = monthNames[d.getMonth()];
+    const year = d.getFullYear();
+
+    const today = new Date();
+    const isToday =
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear();
+
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const isYesterday =
+      d.getDate() === yesterday.getDate() &&
+      d.getMonth() === yesterday.getMonth() &&
+      d.getFullYear() === yesterday.getFullYear();
+
+    if (isToday) {
+      return `Hari Ini • ${dayName}, ${date} ${monthName} ${year}`;
+    }
+    if (isYesterday) {
+      return `Kemarin • ${dayName}, ${date} ${monthName} ${year}`;
+    }
+
+    return `${dayName}, ${date} ${monthName} ${year}`;
+  } catch {
+    return 'Tanggal Lainnya';
+  }
+}
+
+/**
+ * Returns a sortable date key 'YYYY-MM-DD' from a date string.
+ */
+export function getDateKey(dateStr: string | Date | undefined): string {
+  if (!dateStr) return '9999-99-99';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '9999-99-99';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch {
+    return '9999-99-99';
+  }
+}
+
+/**
+ * Computes the real-time effective status of a task/material/quiz.
+ * If status is 'scheduled' but the scheduled open time has passed (<= Date.now()),
+ * it automatically resolves to 'published' (Aktif).
+ */
+export function getEffectiveTaskStatus(
+  status: 'draft' | 'scheduled' | 'published' | 'closed' | 'archived' | string | undefined,
+  openAt?: string | Date
+): 'draft' | 'scheduled' | 'published' | 'closed' | 'archived' | string {
+  if (!status) return 'published';
+  if (status === 'scheduled') {
+    if (!openAt) return 'published';
+    const openTime = new Date(openAt).getTime();
+    if (!isNaN(openTime) && openTime <= Date.now()) {
+      return 'published';
+    }
+    return 'scheduled';
+  }
+  return status;
+}
+

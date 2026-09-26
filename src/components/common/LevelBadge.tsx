@@ -9,7 +9,9 @@ interface LevelBadgeProps {
   showProgress?: boolean;
   progressPercent?: number;
   pointsToNext?: number;
+  xpToNext?: number;
   totalPoints?: number;
+  totalXp?: number;
 }
 
 export const LevelBadge: React.FC<LevelBadgeProps> = ({
@@ -18,7 +20,9 @@ export const LevelBadge: React.FC<LevelBadgeProps> = ({
   showProgress = false,
   progressPercent = 0,
   pointsToNext = 0,
+  xpToNext,
   totalPoints,
+  totalXp,
 }) => {
   const getIcon = () => {
     switch (level.badgeIcon) {
@@ -46,6 +50,8 @@ export const LevelBadge: React.FC<LevelBadgeProps> = ({
     );
   }
 
+  const remainingXp = xpToNext !== undefined ? xpToNext : pointsToNext;
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
       <div className="flex items-center gap-3.5">
@@ -59,12 +65,19 @@ export const LevelBadge: React.FC<LevelBadgeProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Level {level.level}
             </span>
-            {totalPoints !== undefined && (
-              <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/80 flex items-center gap-1">
-                <PointIcon className="w-3.5 h-3.5" />
-                <span>{totalPoints} Poin</span>
-              </span>
-            )}
+            <div className="flex items-center gap-1.5">
+              {totalPoints !== undefined && (
+                <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/80 flex items-center gap-1" title="Poin Leaderboard">
+                  <PointIcon className="w-3.5 h-3.5" />
+                  <span>{totalPoints} Poin</span>
+                </span>
+              )}
+              {totalXp !== undefined && (
+                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200/80" title="Akumulasi XP">
+                  {totalXp} XP
+                </span>
+              )}
+            </div>
           </div>
           <h4 className="text-base font-bold text-slate-800 truncate font-display">
             {level.name}
@@ -77,7 +90,7 @@ export const LevelBadge: React.FC<LevelBadgeProps> = ({
           <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
             <span>Kemajuan Level</span>
             <span className="font-medium text-slate-700">
-              {pointsToNext > 0 ? `${pointsToNext} poin lagi ke Lvl ${level.level + 1}` : 'Level Maksimal!'}
+              {remainingXp > 0 ? `${remainingXp} XP lagi ke Lvl ${level.level + 1}` : 'Level Maksimal!'}
             </span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">

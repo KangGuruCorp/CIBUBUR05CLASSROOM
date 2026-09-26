@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowRight,
   Award,
   Calendar,
   CheckCircle2,
@@ -10,9 +11,12 @@ import {
   ExternalLink,
   Eye,
   FileCheck,
+  FileQuestion,
   FileText,
   Image as ImageIcon,
+  Link2,
   MessageSquare,
+  Play,
   RefreshCw,
   Send,
   Sparkles,
@@ -21,7 +25,7 @@ import {
   Youtube,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Assignment, Submission, SubmissionFile } from '../../types';
+import { Assignment, Quiz, QuizSubmission, Submission, SubmissionFile } from '../../types';
 import { formatDateIndo, isDeadlineNear } from '../../utils/gamification';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { FileUploader, getFileIconBadge, isImageFile, isPdfFile, isWordFile } from '../common/FileUploader';
@@ -29,6 +33,7 @@ import { FilePreviewModal } from '../common/FilePreviewModal';
 import { PointIcon } from '../common/PointIcon';
 import { StatusPill } from '../common/StatusPill';
 import { YouTubeEmbed } from '../common/YouTubeEmbed';
+import { QuizPlayerModal } from './quiz/QuizPlayerModal';
 
 interface StudentAssignmentDetailModalProps {
   assignment: Assignment | null;
@@ -39,7 +44,7 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
   assignment,
   onClose,
 }) => {
-  const { currentUser, submissions, submitAssignment } = useApp();
+  const { currentUser, submissions, submitAssignment, quizzes = [], quizSubmissions = {} } = useApp();
 
   if (!assignment || !currentUser) return null;
 
@@ -58,6 +63,23 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
 
   // Mode for resubmitting / updating if already submitted
   const [isEditingExisting, setIsEditingExisting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [activeQuizForRunner, setActiveQuizForRunner] = useState<Quiz | null>(null);
+
+  // Cari kuis yang terhubung dengan tugas ini
+  const linkedQuiz = quizzes.find((q) => {
+    const isDirectMatch = Boolean(q.linkedAssignmentId && q.linkedAssignmentId === assignment.id);
+    const isReverseMatch = Boolean(assignment.linkedQuizId && q.id === assignment.linkedQuizId);
+    return (isDirectMatch || isReverseMatch) && q.status !== 'archived';
+  });
+
+  const linkedQuizSubmission: QuizSubmission | undefined = linkedQuiz
+    ? quizSubmissions[`${linkedQuiz.id}_${currentUser.uid}`]
+    : undefined;
+
+  const isLinkedQuizCompleted = Boolean(
+    linkedQuizSubmission && linkedQuizSubmission.status !== 'in_progress'
+  );
 
   const status = currentSubmission?.status || 'draft';
   const isSubmitted = status === 'submitted' || status === 'resubmitted';
@@ -84,6 +106,26 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
     setShowConfirm(false);
     submitAssignment(assignment.id, answerText, files);
     setIsEditingExisting(false);
+    setShowSuccessModal(true);
+  };
+
+  // Otomatis kembali ke halaman tugas kelas setelah pesan sukses muncul jika tidak ada kuis terhubung yang belum dikerjakan
+  useEffect(() => {
+    let timer: any;
+    if (showSuccessModal && (!linkedQuiz || isLinkedQuizCompleted)) {
+      timer = setTimeout(() => {
+        setShowSuccessModal(false);
+        onClose();
+      }, 2500);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [showSuccessModal, linkedQuiz, isLinkedQuizCompleted, onClose]);
+
+  const handleCloseSuccess = () => {
+    setShowSuccessModal(false);
+    onClose();
   };
 
   const openTeacherFilePreview = (name: string, url: string, type?: string) => {
@@ -124,7 +166,11 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
               <StatusPill status={status} isLate={currentSubmission?.isLate} />
               <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
                 <PointIcon className="w-3.5 h-3.5" />
-                <span>+{assignment.rewardPoints} XP</span>
+                <span>+{assignment.rewardPoints} Pts</span>
+              </span>
+              <span className="text-xs font-bold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>+{assignment.rewardXp ?? assignment.rewardPoints} XP</span>
               </span>
             </div>
             <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 font-display">
@@ -187,10 +233,14 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
                     </h4>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 justify-end">
                   <span className="text-xs font-black px-3 py-1 rounded-full bg-emerald-600 text-white shadow-xs inline-flex items-center gap-1.5">
                     <PointIcon className="w-3.5 h-3.5" />
-                    <span>+{assignment.rewardPoints} XP Diperoleh</span>
+                    <span>+{assignment.rewardPoints} Poin</span>
+                  </span>
+                  <span className="text-xs font-black px-3 py-1 rounded-full bg-purple-600 text-white shadow-xs inline-flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>+{assignment.rewardXp ?? assignment.rewardPoints} XP</span>
                   </span>
                 </div>
               </div>
@@ -240,6 +290,71 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
               {assignment.instructions || 'Tidak ada petunjuk khusus tertulis dari guru.'}
             </div>
           </div>
+
+          {/* Linked Quiz Card if present */}
+          {linkedQuiz && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/90 via-blue-50/60 to-purple-50/70 border border-indigo-200/90 space-y-3 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#364FFF] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <FileQuestion className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                        🔗 Kuis Terhubung
+                      </span>
+                      <span className="text-xs font-bold text-indigo-700 truncate">
+                        {linkedQuiz.subject}
+                      </span>
+                    </div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate mt-0.5">
+                      {linkedQuiz.title}
+                    </h4>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {isLinkedQuizCompleted ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-black">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Kuis Selesai • Nilai {linkedQuizSubmission?.percentageScore ?? linkedQuizSubmission?.totalScore ?? 100}</span>
+                    </div>
+                  ) : isSubmitted ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveQuizForRunner(linkedQuiz)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#364FFF] to-[#6339FF] hover:from-[#2a3ecc] hover:to-[#502cd8] text-white text-xs font-black shadow-md shadow-indigo-600/25 transition-all cursor-pointer active:scale-95"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Kerjakan Kuis Sekarang</span>
+                    </button>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-slate-500 bg-white/80 border border-indigo-100 px-2.5 py-1.5 rounded-xl">
+                      Buka setelah tugas dikirim
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-indigo-100 text-slate-600">
+                  {linkedQuiz.questions.length} Soal
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-indigo-100 text-slate-600">
+                  {linkedQuiz.durationMinutes > 0 ? `${linkedQuiz.durationMinutes} Menit` : 'Tanpa Batas'}
+                </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-1">
+                  <PointIcon className="w-3 h-3" />
+                  +{linkedQuiz.rewardPoints} Poin
+                </span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-600" />
+                  +{linkedQuiz.rewardXp || linkedQuiz.rewardPoints} XP
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Lampiran Referensi dari Guru (Files, YouTube, Links) */}
           {hasTeacherAttachments && (
@@ -358,6 +473,21 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
                     Edit / Kirim Ulang
                   </button>
                 )}
+              </div>
+
+              {/* Teks Box Apresiasi Pengumpulan Tugas */}
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300/80 shadow-2xs flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm sm:text-base font-black text-emerald-950 font-display">
+                    Kerja Bagus!
+                  </h4>
+                  <p className="text-xs sm:text-sm font-semibold text-emerald-800 mt-0.5">
+                    terimakasih sudah mengumpulkan tugas tepat waktu
+                  </p>
+                </div>
               </div>
 
               {currentSubmission?.answerText && (
@@ -562,6 +692,130 @@ export const StudentAssignmentDetailModal: React.FC<StudentAssignmentDetailModal
           initialIndex={previewIndex}
           title={assignment.title}
           subtitle={previewTitle}
+        />
+      )}
+
+      {/* Pop-up Box Apresiasi Pengumpulan Tugas / Arahkan ke Kuis Terhubung */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          {linkedQuiz && !isLinkedQuizCompleted ? (
+            <div className="w-full max-w-lg bg-white rounded-3xl p-6 sm:p-8 text-center shadow-2xl border-2 border-indigo-200 flex flex-col items-center animate-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3 ring-8 ring-emerald-50 shadow-inner">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <span className="text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-100 px-3.5 py-1 rounded-full mb-2">
+                Tugas Berhasil Terkirim
+              </span>
+              <h3 className="text-2xl font-black text-slate-900 font-display mb-1">
+                Kerja Bagus!
+              </h3>
+              <p className="text-xs sm:text-sm font-semibold text-slate-600 leading-relaxed mb-4">
+                Terima kasih sudah mengumpulkan tugas. Ada kuis evaluasi materi yang terhubung dengan tugas ini:
+              </p>
+
+              {/* Linked Quiz Highlight Card */}
+              <div className="w-full p-4 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-purple-50/60 border border-indigo-200 text-left space-y-2.5 mb-5 shadow-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-[#364FFF] text-white">
+                    Kuis Terhubung
+                  </span>
+                  <span className="text-xs font-bold text-indigo-700">
+                    {linkedQuiz.subject}
+                  </span>
+                </div>
+                
+                <h4 className="text-sm font-black text-slate-900 line-clamp-1">
+                  {linkedQuiz.title}
+                </h4>
+                
+                {linkedQuiz.description && (
+                  <p className="text-xs text-slate-600 line-clamp-2 font-medium">
+                    {linkedQuiz.description}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white/90 border border-indigo-100 text-slate-700 flex items-center gap-1 shadow-2xs">
+                    <FileQuestion className="w-3.5 h-3.5 text-indigo-600" />
+                    {linkedQuiz.questions.length} Soal
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white/90 border border-indigo-100 text-slate-700 flex items-center gap-1 shadow-2xs">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    {linkedQuiz.durationMinutes > 0 ? `${linkedQuiz.durationMinutes} Menit` : 'Tanpa Batas'}
+                  </span>
+                  <span className="text-[11px] font-black px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-1 shadow-2xs">
+                    <PointIcon className="w-3.5 h-3.5" />
+                    +{linkedQuiz.rewardPoints} Poin
+                  </span>
+                  <span className="text-[11px] font-black px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 flex items-center gap-1 shadow-2xs">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    +{linkedQuiz.rewardXp || linkedQuiz.rewardPoints} XP
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setActiveQuizForRunner(linkedQuiz);
+                  }}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#364FFF] to-[#6339FF] hover:from-[#2a3ecc] hover:to-[#502cd8] active:scale-98 text-white font-black text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Mulai Kuis Sekarang</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleCloseSuccess}
+                  className="w-full sm:w-auto px-4 py-3 rounded-2xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Nanti Saja
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 text-center shadow-2xl border-2 border-emerald-200 flex flex-col items-center animate-in zoom-in-95 duration-200">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4 ring-8 ring-emerald-50 shadow-inner">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <span className="text-xs font-black uppercase tracking-widest text-emerald-700 bg-emerald-100 px-3.5 py-1 rounded-full mb-3">
+                Tugas Berhasil Terkirim
+              </span>
+              <h3 className="text-2xl font-black text-slate-900 font-display mb-2">
+                Kerja Bagus!
+              </h3>
+              <p className="text-sm font-semibold text-slate-600 leading-relaxed mb-6">
+                Terima kasih sudah mengumpulkan tugas tepat waktu.
+              </p>
+              <button
+                type="button"
+                onClick={handleCloseSuccess}
+                className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-sm shadow-lg shadow-emerald-200 transition-all cursor-pointer"
+              >
+                Kembali ke Tugas Kelas
+              </button>
+              <p className="text-[11px] text-slate-400 mt-2 font-medium">
+                Otomatis menutup dan kembali ke tugas kelas...
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quiz Runner Modal if triggered from Linked Quiz CTA */}
+      {activeQuizForRunner && (
+        <QuizPlayerModal
+          isOpen={Boolean(activeQuizForRunner)}
+          onClose={() => {
+            setActiveQuizForRunner(null);
+            onClose();
+          }}
+          quiz={activeQuizForRunner}
+          existingSubmission={linkedQuizSubmission}
         />
       )}
     </div>

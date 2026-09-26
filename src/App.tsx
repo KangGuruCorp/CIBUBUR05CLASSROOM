@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 
 // Layout & Modals
@@ -15,6 +15,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { PasswordChangeModal } from './components/auth/PasswordChangeModal';
 import { AvatarPickerModal } from './components/auth/AvatarPickerModal';
 import { FloatingChat } from './components/chat/FloatingChat';
+import { MobileFullscreenController } from './components/common/MobileFullscreenController';
 
 // Student Views
 import { StudentDashboard } from './components/student/StudentDashboard';
@@ -22,6 +23,7 @@ import { StudentClasswork } from './components/student/StudentClasswork';
 import { StudentMissions } from './components/student/StudentMissions';
 import { StudentLeaderboard } from './components/student/StudentLeaderboard';
 import { StudentProfile } from './components/student/StudentProfile';
+import { StudentQuizPage } from './components/student/quiz/StudentQuizPage';
 
 // Teacher Views
 import { TeacherDashboard } from './components/teacher/TeacherDashboard';
@@ -31,13 +33,33 @@ import { TeacherStudents } from './components/teacher/TeacherStudents';
 import { TeacherAnnouncements } from './components/teacher/TeacherAnnouncements';
 import { TeacherReports } from './components/teacher/TeacherReports';
 import { TeacherAuditLogs } from './components/teacher/TeacherAuditLogs';
+import { TeacherQuizPage } from './components/teacher/quiz/TeacherQuizPage';
 
-// Collaborative Board (Papan Ide)
+// Collaborative Board (Ruang Kolaborasi)
 import { CollabBoardPage } from './components/collab/CollabBoardPage';
-import { FirestoreQuotaBanner } from './components/common/FirestoreQuotaBanner';
+
+// Modus Kertas (Paper Mode) Standalone View
+import { PaperStandaloneView } from './components/teacher/quiz/paper/PaperStandaloneView';
 
 const MainContent: React.FC = () => {
-  const { currentUser, currentRole, activeTab, setActiveTab } = useApp();
+  const { currentUser, currentRole, activeTab, setActiveTab, users } = useApp();
+
+  // Akses langsung standalone Paper Mode via QR code ponsel guru (?mode=paper-scanner / ?mode=paper-presenter)
+  const isPaperModeParam =
+    typeof window !== 'undefined' &&
+    (window.location.search.includes('mode=paper-scanner') ||
+      window.location.search.includes('mode=paper-presenter'));
+
+  if (isPaperModeParam) {
+    return <PaperStandaloneView />;
+  }
+
+  // Ruang Kolaborasi hanya dapat diakses oleh Guru/Admin; jika siswa membuka tab ini, arahkan ke beranda
+  useEffect(() => {
+    if (activeTab === 'papan-ide' && currentRole === 'student') {
+      setActiveTab('beranda');
+    }
+  }, [activeTab, currentRole, setActiveTab]);
 
   // Modal triggers
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -56,10 +78,10 @@ const MainContent: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
-        <FirestoreQuotaBanner />
         <div className="flex-1">
           <LoginPage />
         </div>
+        <MobileFullscreenController />
       </div>
     );
   }
@@ -98,10 +120,10 @@ const MainContent: React.FC = () => {
               }}
             />
           );
+        case 'quiz':
+          return <StudentQuizPage />;
         case 'misi':
           return <StudentMissions />;
-        case 'papan-ide':
-          return <CollabBoardPage />;
         case 'leaderboard':
           return <StudentLeaderboard />;
         case 'profil':
@@ -147,10 +169,14 @@ const MainContent: React.FC = () => {
               }}
             />
           );
+        case 'quiz':
+          return <TeacherQuizPage />;
         case 'papan-ide':
           return <CollabBoardPage />;
         case 'misi':
           return <TeacherMissions />;
+        case 'leaderboard':
+          return <StudentLeaderboard />;
         case 'siswa':
           return <TeacherStudents />;
         case 'pengumuman':
@@ -183,36 +209,10 @@ const MainContent: React.FC = () => {
     }
   };
 
-  // Full-screen immersive mode for Collaborative Board ("Papan Ide") without sidebar or header
-  if (activeTab === 'papan-ide') {
-    return (
-      <div className="fixed inset-0 z-40 bg-slate-100 flex flex-col w-screen h-screen overflow-hidden font-sans selection:bg-indigo-500 selection:text-white">
-        <FirestoreQuotaBanner />
-        <main className="flex-1 w-full h-full overflow-hidden">
-          {renderContent()}
-        </main>
-
-        {/* Global Modals */}
-        <PasswordChangeModal
-          isOpen={showPasswordModal}
-          onClose={() => setShowPasswordModal(false)}
-        />
-        <AvatarPickerModal
-          isOpen={showAvatarPicker}
-          onClose={() => setShowAvatarPicker(false)}
-        />
-        <NotificationModal
-          isOpen={showNotifModal}
-          onClose={() => setShowNotifModal(false)}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* Quota limit warning banner */}
-      <FirestoreQuotaBanner />
+
 
       {/* Top Header */}
       <Header
@@ -255,6 +255,9 @@ const MainContent: React.FC = () => {
 
       {/* Floating Chat Room for Students & Teachers */}
       <FloatingChat />
+
+      {/* Mobile Auto-Fullscreen Controller */}
+      <MobileFullscreenController />
     </div>
   );
 };

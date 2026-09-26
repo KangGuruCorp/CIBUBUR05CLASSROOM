@@ -10,6 +10,8 @@ import {
   Mission,
   MissionProgress,
   PointLedger,
+  Quiz,
+  QuizSubmission,
   School,
   Submission,
   User,
@@ -1076,120 +1078,7 @@ const dateOffset = (days: number, hours: number = 0, minutes: number = 0) => {
   return d.toISOString();
 };
 
-export const INITIAL_ASSIGNMENTS: Assignment[] = [
-  {
-    id: 'asg_01_ipa_proyek_planet',
-    schoolId: 'sch_merdeka_01',
-    classIds: ['cls_6a'],
-    subject: 'Ilmu Pengetahuan Alam (IPAS)',
-    topic: 'Tata Surya & Planet',
-    title: 'Poster Karakteristik Planet Favorit & Fakta Unik',
-    instructions:
-      'Buatlah sebuah poster kreatif (boleh digambar di kertas gambar A4 atau digital) tentang satu planet yang paling menarik bagimu. Sertakan:\n1. Nama planet & jarak dari matahari\n2. Ukuran dan warna khas\n3. Suhu permukaan dan jumlah satelit\n4. Minimal 2 fakta unik menarik!\n\nSimak video penjelasan dan unduh lembar kerja terlampir sebagai panduanmu. Foto poster karyamu dengan jelas dan lampirkan di sini beserta deskripsi singkat.',
-    youtubeUrl: 'https://www.youtube.com/watch?v=libKVRa01L8',
-    attachments: [
-      {
-        name: 'Panduan_Proyek_Tata_Surya.pdf',
-        url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        type: 'pdf',
-        sizeMB: 1.8,
-      },
-      {
-        name: 'Rubrik_Penilaian_Poster.png',
-        url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800',
-        type: 'image',
-        sizeMB: 0.9,
-      },
-    ],
-    attachmentRules: {
-      allowedTypes: ['image/jpeg', 'image/png', 'application/pdf'],
-      maxFiles: 3,
-      maxSizeMB: 15,
-    },
-    openAt: dateOffset(-3),
-    dueAt: dateOffset(1, 4), // 28 hours from now
-    allowLate: true,
-    allowRevision: true,
-    maxScore: 100,
-    rewardPoints: 50,
-    status: 'published',
-    createdBy: 'usr_guru_rahma',
-    createdAt: dateOffset(-3),
-    updatedAt: dateOffset(-3),
-  },
-  {
-    id: 'asg_02_mtk_latihan_pecahan',
-    schoolId: 'sch_merdeka_01',
-    classIds: ['cls_6a'],
-    subject: 'Matematika',
-    topic: 'Operasi Pecahan Campuran',
-    title: 'Latihan Soal Cerita Perkalian & Pembagian Pecahan',
-    instructions:
-      'Kerjakan 5 soal cerita operasi hitung pecahan pada lembar soal terlampir (atau buku tulis Matematika halaman 42 No. 1-5). Tuliskan diketahui, ditanya, kalimat matematika, dan langkah pengerjaannya secara rinci. Foto hasil pekerjaanmu yang rapi dan lampirkan file fotonya di sini.',
-    attachments: [
-      {
-        name: 'Lembar_Latihan_Pecahan_Kelas6.pdf',
-        url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        type: 'pdf',
-        sizeMB: 1.2,
-      },
-    ],
-    attachmentRules: {
-      allowedTypes: ['image/jpeg', 'image/png', 'application/pdf'],
-      maxFiles: 3,
-      maxSizeMB: 15,
-    },
-    openAt: dateOffset(-5),
-    dueAt: dateOffset(-1), // already past due
-    allowLate: true,
-    allowRevision: true,
-    maxScore: 100,
-    rewardPoints: 40,
-    status: 'published',
-    createdBy: 'usr_guru_rahma',
-    createdAt: dateOffset(-5),
-    updatedAt: dateOffset(-5),
-  },
-  {
-    id: 'asg_03_bindo_analisis_eksplanasi',
-    schoolId: 'sch_merdeka_01',
-    classIds: ['cls_6a'],
-    subject: 'Bahasa Indonesia',
-    topic: 'Teks Eksplanasi Ilmiah',
-    title: 'Analisis Struktur Teks Eksplanasi "Terjadinya Pelangi"',
-    instructions:
-      'Bacalah artikel referensi tentang fenomena pelangi yang terlampir, kemudian tentukan paragraf mana yang merupakan:\n1. Pernyataan umum\n2. Deretan penjelas (proses pembiasan cahaya)\n3. Interpretasi atau simpulan penulis\n\nKamu dapat mengetikkan langsung jawaban analisismu pada kolom jawaban atau mengunggah berkas tulisan/dokumen.',
-    attachments: [
-      {
-        name: 'Artikel_Proses_Terjadinya_Pelangi.pdf',
-        url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        type: 'pdf',
-        sizeMB: 0.8,
-      },
-      {
-        name: 'Bagan_Struktur_Teks_Eksplanasi.png',
-        url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800',
-        type: 'image',
-        sizeMB: 1.1,
-      },
-    ],
-    attachmentRules: {
-      allowedTypes: ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
-      maxFiles: 3,
-      maxSizeMB: 15,
-    },
-    openAt: dateOffset(-1),
-    dueAt: dateOffset(4), // 4 days from now
-    allowLate: false,
-    allowRevision: true,
-    maxScore: 100,
-    rewardPoints: 45,
-    status: 'published',
-    createdBy: 'usr_guru_rahma',
-    createdAt: dateOffset(-1),
-    updatedAt: dateOffset(-1),
-  },
-];
+export const INITIAL_ASSIGNMENTS: Assignment[] = [];
 
 export const INITIAL_SUBMISSIONS: Record<string, Submission> = {};
 
@@ -1311,3 +1200,85 @@ export const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
     createdAt: dateOffset(-1, 8),
   },
 ];
+
+export const INITIAL_QUIZZES: Quiz[] = [
+  {
+    id: 'quiz_ipas_01',
+    schoolId: 'sch_merdeka_01',
+    classIds: ['cls_6a', 'cls_6b'],
+    subject: 'Ilmu Pengetahuan Alam & Sosial (IPAS)',
+    topic: 'Tata Surya & Planet',
+    title: 'Kuis Evaluasi Bab 1: Sistem Tata Surya & Penjelajahan Luar Angkasa',
+    description: 'Uji pemahamanmu seputar planet, karakteristik benda langit, dan kedudukan bumi dalam tata surya.',
+    durationMinutes: 30,
+    openAt: dateOffset(-2),
+    dueAt: dateOffset(5, 18),
+    shuffleQuestions: false,
+    showScoreImmediately: true,
+    maxScore: 100,
+    rewardPoints: 75,
+    status: 'published',
+    createdBy: 'usr_guru_rahma',
+    createdAt: dateOffset(-2, 9),
+    updatedAt: dateOffset(-2, 9),
+    questions: [
+      {
+        id: 'q_01',
+        type: 'single_choice',
+        prompt: 'Planet apakah yang memiliki ukuran terbesar di dalam sistem tata surya kita?',
+        points: 20,
+        options: ['Mars', 'Bumi', 'Yupiter', 'Saturnus'],
+        correctOptionIndex: 2,
+        explanation: 'Yupiter merupakan planet terbesar di tata surya dengan diameter lebih dari 142.000 km.',
+      },
+      {
+        id: 'q_02',
+        type: 'complex_multiple_choice',
+        prompt: 'Tentukan kebenaran dari setiap pernyataan mengenai karakteristik planet berikut ini!',
+        points: 20,
+        complexMode: 'true_false',
+        complexStatements: [
+          { id: 'stmt_1', statement: 'Merkurius adalah planet yang letaknya paling dekat dengan Matahari.', isCorrect: true },
+          { id: 'stmt_2', statement: 'Mars dikenal sebagai Planet Merah karena atmosfernya kaya akan gas metana.', isCorrect: false },
+          { id: 'stmt_3', statement: 'Saturnus memiliki sistem cincin yang sangat indah dan tersusun dari partikel es dan batu.', isCorrect: true },
+          { id: 'stmt_4', statement: 'Bulan merupakan salah satu contoh planet dalam tata surya.', isCorrect: false },
+        ],
+        explanation: 'Merkurius terdekat dengan matahari. Mars berwarna merah karena oksida besi (karat), bukan metana. Bulan adalah satelit alami, bukan planet.',
+      },
+      {
+        id: 'q_03',
+        type: 'matching',
+        prompt: 'Jodohkanlah nama planet di sebelah kiri dengan julukan/karakteristiknya yang tepat di sebelah kanan!',
+        points: 20,
+        matchingPairs: [
+          { id: 'pair_1', left: 'Mars', right: 'Planet Merah' },
+          { id: 'pair_2', left: 'Saturnus', right: 'Planet Bercincin' },
+          { id: 'pair_3', left: 'Venus', right: 'Bintang Kejora' },
+          { id: 'pair_4', left: 'Bumi', right: 'Planet Biru' },
+        ],
+        explanation: 'Mars = Planet Merah, Saturnus = Planet Bercincin, Venus = Bintang Kejora, Bumi = Planet Biru.',
+      },
+      {
+        id: 'q_04',
+        type: 'short_answer',
+        prompt: 'Pusat tata surya yang memancarkan cahaya sendiri dan dikelilingi oleh semua planet adalah ...',
+        points: 20,
+        acceptedAnswers: ['Matahari', 'matahari', 'Sang Surya', 'Surya'],
+        caseSensitive: false,
+        explanation: 'Matahari adalah bintang induk dan pusat orbit dari sistem tata surya kita.',
+      },
+      {
+        id: 'q_05',
+        type: 'essay',
+        prompt: 'Jelaskan mengapa Planet Bumi menjadi satu-satunya tempat di tata surya yang mendukung adanya kehidupan makhluk hidup!',
+        points: 20,
+        minWords: 15,
+        essayRubric: 'Siswa menyebutkan: keberadaan air cair, atmosfer yang mengandung oksigen untuk bernapas, lapisan ozon pelindung radiasi, dan jarak yang ideal (zona laik huni/Goldilocks zone).',
+        explanation: 'Bumi memiliki air dalam wujud cair, atmosfer pelindung kaya oksigen, suhu permukaan yang stabil, dan jarak ideal dari matahari.',
+      },
+    ],
+  },
+];
+
+export const INITIAL_QUIZ_SUBMISSIONS: Record<string, QuizSubmission> = {};
+

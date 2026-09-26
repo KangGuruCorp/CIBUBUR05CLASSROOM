@@ -15,7 +15,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Mission, MissionProgress, MissionStatus, MissionType } from '../../types';
+import { Mission, MissionProgress, MissionRewardMode, MissionStatus, MissionType } from '../../types';
 import { formatDateIndo } from '../../utils/gamification';
 import { BadgeIcon } from '../common/BadgeIcon';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -37,6 +37,7 @@ export const TeacherMissions: React.FC = () => {
   const [target, setTarget] = useState(2);
   const [rewardPoints, setRewardPoints] = useState(30);
   const [repeat, setRepeat] = useState<'daily' | 'weekly' | 'once'>('weekly');
+  const [rewardMode, setRewardMode] = useState<MissionRewardMode>('automatic');
   const [badgeId, setBadgeId] = useState('');
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
@@ -62,6 +63,7 @@ export const TeacherMissions: React.FC = () => {
     setTarget(2);
     setRewardPoints(30);
     setRepeat('weekly');
+    setRewardMode('automatic');
     setBadgeId('');
     const nowStr = new Date().toISOString().slice(0, 16);
     setStartAt(nowStr);
@@ -78,6 +80,7 @@ export const TeacherMissions: React.FC = () => {
     setTarget(m.target);
     setRewardPoints(m.rewardPoints);
     setRepeat(m.repeat);
+    setRewardMode(m.rewardMode || (m.type === 'custom' || m.type === 'manual' ? 'manual_verification' : 'automatic'));
     setBadgeId(m.badgeId || '');
     setStartAt(m.startAt ? new Date(m.startAt).toISOString().slice(0, 16) : '');
     setEndAt(m.endAt ? new Date(m.endAt).toISOString().slice(0, 16) : '');
@@ -109,6 +112,7 @@ export const TeacherMissions: React.FC = () => {
       target: Number(target),
       rewardPoints: Number(rewardPoints),
       repeat,
+      rewardMode,
       startAt: startAt ? new Date(startAt).toISOString() : new Date().toISOString(),
       endAt: endAt ? new Date(endAt).toISOString() : undefined,
       badgeId: badgeId || undefined,
@@ -188,7 +192,7 @@ export const TeacherMissions: React.FC = () => {
             >
               <div>
                 <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800">
                       {mis.repeat === 'daily'
                         ? 'Harian'
@@ -216,6 +220,17 @@ export const TeacherMissions: React.FC = () => {
                         'Dinonaktifkan'
                       )}
                     </span>
+                    {mis.rewardMode === 'manual_verification' ? (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                        <Award className="w-3 h-3 text-amber-700" />
+                        <span>Verifikasi Guru</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1 shadow-2xs">
+                        <Zap className="w-3 h-3 text-blue-600" />
+                        <span>Poin Otomatis</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Points label strictly in top right */}
@@ -414,6 +429,67 @@ export const TeacherMissions: React.FC = () => {
                     <option value="weekly">Mingguan</option>
                     <option value="once">Sekali Saja</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Metode Pemberian Poin (Otomatis vs Verifikasi Guru) */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200/80 space-y-2">
+                <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Award className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Metode Pemberian Poin Misi *</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label
+                    className={`p-3 rounded-2xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                      rewardMode === 'automatic'
+                        ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500/20 text-emerald-950 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="rewardMode"
+                      value="automatic"
+                      checked={rewardMode === 'automatic'}
+                      onChange={() => setRewardMode('automatic')}
+                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-xs font-extrabold text-slate-900">Otomatis Langsung</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                        Poin langsung dapat diklaim siswa setelah target misi tercapai tanpa perlu verifikasi guru.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`p-3 rounded-2xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                      rewardMode === 'manual_verification'
+                        ? 'bg-amber-100/70 border-amber-400 ring-2 ring-amber-500/20 text-amber-950 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="rewardMode"
+                      value="manual_verification"
+                      checked={rewardMode === 'manual_verification'}
+                      onChange={() => setRewardMode('manual_verification')}
+                      className="mt-0.5 text-amber-600 focus:ring-amber-500 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-700" />
+                        <span className="text-xs font-extrabold text-slate-900">Verifikasi Guru (Tertahan)</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                        Poin <strong>tidak otomatis bertambah</strong>. Progres/laporan wajib diverifikasi & dinilai guru terlebih dahulu.
+                      </p>
+                    </div>
+                  </label>
                 </div>
               </div>
 

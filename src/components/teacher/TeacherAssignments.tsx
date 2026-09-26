@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Assignment, Submission } from '../../types';
-import { formatDateIndo, formatShortDate } from '../../utils/gamification';
+import { formatDateIndo, formatShortDate, getEffectiveTaskStatus } from '../../utils/gamification';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { EmptyState } from '../common/EmptyState';
 import { PointIcon } from '../common/PointIcon';
@@ -224,12 +224,12 @@ export const TeacherAssignments: React.FC<TeacherAssignmentsProps> = ({
                       <span className="text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
                         {asg.subject}
                       </span>
-                      {asg.status === 'scheduled' ? (
+                      {getEffectiveTaskStatus(asg.status, asg.openAt) === 'scheduled' ? (
                         <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-xs">
                           <Clock className="w-3 h-3 text-amber-700" />
                           <span>Dijadwalkan</span>
                         </span>
-                      ) : asg.status === 'published' ? (
+                      ) : getEffectiveTaskStatus(asg.status, asg.openAt) === 'published' ? (
                         <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-xs">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                           <span>Aktif Tayang</span>

@@ -26,6 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { ChatMessage, User as AppUser } from '../../types';
 import { compressGeneralImage } from '../../utils/imageUtils';
+import { uploadDataUrlToServer } from '../../lib/fileUploadService';
 
 // Kid-friendly classroom emoji palette
 const CLASSROOM_EMOJIS = ['👍', '❤️', '👏', '🌟', '🚀', '💡', '📚', '✍️', '🎯', '🏆', '😀', '🤩', '🎒', '🪐', '💯', '🎨'];
@@ -131,28 +132,29 @@ export const FloatingChat: React.FC = () => {
   const filteredMessages = useMemo(() => {
     return chatMessages.filter((msg) => {
       if (activeChannel === 'public') {
-        // Show public messages for the current class
-        const isPublic = msg.channelType === 'public';
-        const isSameClass = !msg.classId || msg.classId === currentClassId || msg.classId === 'cls_6a';
-        if (!isPublic || !isSameClass) return false;
+        // Show public messages
+        const isPublic = !msg.channelType || msg.channelType === 'public';
+        if (!isPublic) return false;
       } else {
         // Direct messages
         if (msg.channelType !== 'direct') return false;
         if (!currentUser) return false;
 
         if (currentRole === 'student') {
-          // As a student, show messages between me and teacher
-          const isMyDirect =
-            (msg.senderId === currentUser.uid && msg.recipientId === homeroomTeacherUid) ||
-            (msg.senderId === homeroomTeacherUid && msg.recipientId === currentUser.uid);
+          // As a student, show direct messages where I am sender or recipient
+          const isMyDirect = msg.senderId === currentUser.uid || msg.recipientId === currentUser.uid;
           if (!isMyDirect) return false;
         } else {
-          // As a teacher, show messages between me and the selected student
-          if (!selectedStudentId) return false;
-          const isSelectedDirect =
-            (msg.senderId === currentUser.uid && msg.recipientId === selectedStudentId) ||
-            (msg.senderId === selectedStudentId && msg.recipientId === currentUser.uid);
-          if (!isSelectedDirect) return false;
+          // As a teacher, show messages between teacher and the selected student
+          if (!selectedStudentId) {
+            const isMyDirect = msg.senderId === currentUser.uid || msg.recipientId === currentUser.uid;
+            if (!isMyDirect) return false;
+          } else {
+            const isSelectedDirect =
+              (msg.senderId === currentUser.uid && msg.recipientId === selectedStudentId) ||
+              (msg.senderId === selectedStudentId && msg.recipientId === currentUser.uid);
+            if (!isSelectedDirect) return false;
+          }
         }
       }
 
@@ -219,11 +221,16 @@ export const FloatingChat: React.FC = () => {
         ? (currentRole === 'student' ? homeroomTeacher.uid : selectedStudentId)
         : undefined;
 
+      let finalImageUrl = imageToSend;
+      if (imageToSend && imageToSend.startsWith('data:')) {
+        finalImageUrl = await uploadDataUrlToServer(imageToSend, `chat_${Date.now()}.jpg`, 'chat');
+      }
+
       await sendChatMessage({
         text: textToSend,
         channelType: activeChannel === 'direct' ? 'direct' : 'public',
         recipientId,
-        imageUrl: imageToSend,
+        imageUrl: finalImageUrl,
       });
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -1024,7 +1031,7 @@ export const FloatingChat: React.FC = () => {
                           {/* Left Avatar for Others */}
                           {!isMe && (
                             <img
-                              src={msg.senderAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=avatar'}
+                              src={users?.find(u => u.uid === msg.senderId)?.avatarUrl || msg.senderAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=avatar'}
                               alt={msg.senderName}
                               className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200 bg-white"
                               referrerPolicy="no-referrer"

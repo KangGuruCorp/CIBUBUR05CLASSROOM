@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ImageCropModal } from '../common/ImageCropModal';
+import { uploadDataUrlToServer } from '../../lib/fileUploadService';
 
 interface AvatarPickerModalProps {
   isOpen: boolean;
@@ -110,7 +111,7 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
     setErrorMessage('');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isTeacher) {
       if (!teacherName.trim()) {
         setErrorMessage('Nama guru tidak boleh kosong.');
@@ -143,32 +144,45 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({ isOpen, on
       }
     }
 
-    if (!previewUrl && !currentUser.avatarUrl) {
-      setErrorMessage('Pilih atau unggah foto profil terlebih dahulu.');
-      return;
+    setIsProcessing(true);
+    setErrorMessage('');
+
+    try {
+      let finalAvatarUrl = previewUrl || currentUser.avatarUrl;
+
+      if (previewUrl && previewUrl.startsWith('data:')) {
+        const fileName = `${currentUser.username || currentUser.uid}_avatar.jpg`;
+        finalAvatarUrl = await uploadDataUrlToServer(previewUrl, fileName, 'avatars');
+      }
+
+      const result = updateUserProfile({
+        displayName: isTeacher ? teacherName.trim() : undefined,
+        username: isTeacher ? teacherUsername.trim().toLowerCase() : undefined,
+        password: isTeacher ? teacherPassword.trim() : undefined,
+        avatarUrl: finalAvatarUrl,
+      });
+
+      if (result && !result.success) {
+        setErrorMessage(result.message || 'Gagal menyimpan profil guru.');
+        setIsProcessing(false);
+        return;
+      }
+
+      setSuccessMessage(
+        isTeacher
+          ? 'Profil guru, username, dan kata sandi berhasil disimpan!'
+          : 'Foto profil berhasil diperbarui!'
+      );
+
+      setTimeout(() => {
+        setIsProcessing(false);
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      console.error('Error saving avatar:', err);
+      setErrorMessage(err?.message || 'Gagal menyimpan foto profil.');
+      setIsProcessing(false);
     }
-
-    const result = updateUserProfile({
-      displayName: isTeacher ? teacherName.trim() : undefined,
-      username: isTeacher ? teacherUsername.trim().toLowerCase() : undefined,
-      password: isTeacher ? teacherPassword.trim() : undefined,
-      avatarUrl: previewUrl || currentUser.avatarUrl,
-    });
-
-    if (result && !result.success) {
-      setErrorMessage(result.message || 'Gagal menyimpan profil guru.');
-      return;
-    }
-
-    setSuccessMessage(
-      isTeacher
-        ? 'Profil guru, username, dan kata sandi berhasil disimpan!'
-        : 'Foto profil berhasil diperbarui!'
-    );
-
-    setTimeout(() => {
-      onClose();
-    }, 700);
   };
 
   return (

@@ -1,25 +1,6 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { BoardElement, BoardParticipant, CollabBoard } from '../types/collabBoard';
 import { safeStorage } from '../utils/storage';
-import {
-  cleanForFirestore,
-  isFirestoreQuotaExceeded,
-  setFirestoreQuotaExceeded,
-  isQuotaError,
-} from '../lib/firestoreSync';
 
-const BOARDS_COLLECTION = 'ide_boards';
 const LOCAL_BOARDS_KEY = 'gamiclass_ide_boards';
 
 export function generateBoardCode(): string {
@@ -67,6 +48,58 @@ export function saveLocalBoardSingle(board: CollabBoard): void {
   saveLocalBoards(list);
 }
 
+// Global SSE Connection
+let eventSource: EventSource | null = null;
+type BoardListener = (boards: CollabBoard[]) => void;
+const listeners = new Set<BoardListener>();
+
+let reconnectTimer: any = null;
+
+function initSSE() {
+  if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+  if (eventSource) return;
+  
+  try {
+    eventSource = new EventSource('/api/stream');
+    
+    eventSource.onmessage = (event) => {
+      if (!event.data || event.data.startsWith(':')) return;
+      try {
+        const boards = JSON.parse(event.data) as CollabBoard[];
+        saveLocalBoards(boards);
+        listeners.forEach(listener => listener(boards));
+      } catch (err) {
+        console.warn('Failed to parse SSE boards data', err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      try { eventSource?.close(); } catch {}
+      eventSource = null;
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          initSSE();
+        }, 2000);
+      }
+    };
+  } catch (err) {
+    console.warn('Failed to init board SSE:', err);
+  }
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+        try { eventSource?.close(); } catch {}
+        eventSource = null;
+        initSSE();
+      }
+    }
+  });
+}
+
 /**
  * Subscribe to list of boards for a class in real-time.
  */
@@ -74,121 +107,98 @@ export function subscribeToClassBoards(
   classId: string,
   onUpdate: (boards: CollabBoard[]) => void
 ): () => void {
-  // Always emit local cache first
   const initialLocal = getLocalBoards().filter(
     (b) => !classId || b.classId === classId || b.classId === 'all'
   );
   onUpdate(initialLocal);
 
-  try {
-    const collRef = collection(db, BOARDS_COLLECTION);
-    const q = classId
-      ? query(collRef, where('classId', 'in', [classId, 'all']))
-      : collRef;
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const boards: CollabBoard[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as CollabBoard;
-          boards.push({
-            ...data,
-            id: docSnap.id,
-            elements: data.elements || {},
-          });
-        });
-
-        // Merge with local boards if any exist locally
-        const mergedMap = new Map<string, CollabBoard>();
-        initialLocal.forEach((b) => mergedMap.set(b.id, b));
-        boards.forEach((b) => mergedMap.set(b.id, b));
-
-        const sorted = Array.from(mergedMap.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-
-        saveLocalBoards(sorted);
-        onUpdate(sorted);
-      },
-      (error) => {
-        console.warn('Firestore boards onSnapshot error, falling back to local cache:', error);
-        onUpdate(initialLocal);
-      }
+  const listener: BoardListener = (allBoards) => {
+    const filtered = allBoards.filter(
+      (b) => !classId || b.classId === classId || b.classId === 'all'
     );
+    onUpdate(filtered);
+  };
 
-    return unsubscribe;
-  } catch (err) {
-    console.warn('subscribeToClassBoards failed, using local only:', err);
-    return () => {};
-  }
+  listeners.add(listener);
+  initSSE();
+
+  // Also fetch immediately via REST to ensure data is always up to date even if SSE is connecting
+  fetch('/api/boards')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((boards) => {
+      if (Array.isArray(boards)) {
+        saveLocalBoards(boards);
+        const filtered = boards.filter(
+          (b) => !classId || b.classId === classId || b.classId === 'all'
+        );
+        onUpdate(filtered);
+      }
+    })
+    .catch((err) => console.warn('Fetch initial boards error:', err));
+
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /**
- * Subscribe to a single board's real-time changes (elements, participants, lock status).
+ * Subscribe to a single board's real-time changes.
  */
 export function subscribeToBoard(
   boardId: string,
   onUpdate: (board: CollabBoard | null) => void
 ): () => void {
-  // Emit local copy first if available
   const localList = getLocalBoards();
   const found = localList.find((b) => b.id === boardId);
   if (found) onUpdate(found);
 
-  try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data() as CollabBoard;
-          const board: CollabBoard = {
-            ...data,
-            id: snapshot.id,
-            elements: data.elements || {},
-            activeParticipants: data.activeParticipants || {},
-          };
-          saveLocalBoardSingle(board);
-          onUpdate(board);
-        } else {
-          // Check local cache
-          const localMatch = getLocalBoards().find((b) => b.id === boardId);
-          onUpdate(localMatch || null);
-        }
-      },
-      (error) => {
-        console.warn(`Firestore onSnapshot error on board ${boardId}:`, error);
-        const localMatch = getLocalBoards().find((b) => b.id === boardId);
-        if (localMatch) onUpdate(localMatch);
-      }
-    );
+  const listener: BoardListener = (allBoards) => {
+    const match = allBoards.find((b) => b.id === boardId);
+    if (match) onUpdate(match);
+  };
 
-    return unsubscribe;
-  } catch (err) {
-    console.warn('subscribeToBoard failed, using local fallback:', err);
-    return () => {};
-  }
+  listeners.add(listener);
+  initSSE();
+
+  const fetchLatest = () => {
+    fetch(`/api/boards/${boardId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((b) => {
+        if (b && typeof b === 'object' && b.id) {
+          saveLocalBoardSingle(b);
+          onUpdate(b);
+        }
+      })
+      .catch((err) => console.warn('Fetch single board error:', err));
+  };
+
+  // Immediate fetch on subscription
+  fetchLatest();
+
+  // 1.5s interval polling fallback ensures cross-device updates arrive even if SSE drops
+  const pollTimer = setInterval(fetchLatest, 1500);
+
+  return () => {
+    listeners.delete(listener);
+    clearInterval(pollTimer);
+  };
 }
 
 /**
- * Create a new collaborative board in Firestore and local storage.
+ * Create a new collaborative board in backend and local storage.
  */
 export async function createBoard(board: CollabBoard): Promise<CollabBoard> {
   saveLocalBoardSingle(board);
 
-  if (isFirestoreQuotaExceeded()) return board;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, board.id);
-    const cleaned = cleanForFirestore(board);
-    await setDoc(docRef, cleaned);
+    const res = await fetch('/api/boards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(board),
+    });
+    if (!res.ok) throw new Error('Failed to create board');
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    } else {
-      console.warn('Failed to save new board to Firestore, kept locally:', err);
-    }
+    console.warn('Failed to save new board to backend, kept locally:', err);
   }
 
   return board;
@@ -201,7 +211,6 @@ export async function updateBoard(
   boardId: string,
   updates: Partial<CollabBoard>
 ): Promise<void> {
-  // Update local cache
   const list = getLocalBoards();
   const idx = list.findIndex((b) => b.id === boardId);
   if (idx >= 0) {
@@ -209,21 +218,14 @@ export async function updateBoard(
     saveLocalBoards(list);
   }
 
-  if (isFirestoreQuotaExceeded()) return;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    const cleaned = cleanForFirestore({
-      ...updates,
-      updatedAt: new Date().toISOString(),
+    await fetch(`/api/boards/${boardId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
     });
-    await updateDoc(docRef, cleaned);
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    } else {
-      console.warn('Failed to update board in Firestore:', err);
-    }
+    console.warn('Failed to update board in backend:', err);
   }
 }
 
@@ -234,7 +236,6 @@ export async function upsertBoardElement(
   boardId: string,
   element: BoardElement
 ): Promise<void> {
-  // Update local
   const list = getLocalBoards();
   const idx = list.findIndex((b) => b.id === boardId);
   if (idx >= 0) {
@@ -246,28 +247,14 @@ export async function upsertBoardElement(
     saveLocalBoards(list);
   }
 
-  if (isFirestoreQuotaExceeded()) return;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    await updateDoc(docRef, {
-      [`elements.${element.id}`]: cleanForFirestore(element),
-      updatedAt: new Date().toISOString(),
+    await fetch(`/api/boards/${boardId}/elements`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(element),
     });
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-      return;
-    }
-    // If updateDoc fails (e.g., document needs full setDoc), attempt fallback
-    try {
-      if (idx >= 0) {
-        const docRef = doc(db, BOARDS_COLLECTION, boardId);
-        await setDoc(docRef, cleanForFirestore(list[idx]), { merge: true });
-      }
-    } catch {
-      // Handled locally
-    }
+    console.warn('Failed to upsert element:', err);
   }
 }
 
@@ -286,22 +273,12 @@ export async function removeBoardElement(
     saveLocalBoards(list);
   }
 
-  if (isFirestoreQuotaExceeded()) return;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    if (idx >= 0) {
-      await updateDoc(docRef, {
-        elements: cleanForFirestore(list[idx].elements),
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    await fetch(`/api/boards/${boardId}/elements/${elementId}`, {
+      method: 'DELETE',
+    });
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    } else {
-      console.warn('Failed to delete element in Firestore:', err);
-    }
+    console.warn('Failed to delete element:', err);
   }
 }
 
@@ -317,20 +294,12 @@ export async function clearAllBoardElements(boardId: string): Promise<void> {
     saveLocalBoards(list);
   }
 
-  if (isFirestoreQuotaExceeded()) return;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    await updateDoc(docRef, {
-      elements: {},
-      updatedAt: new Date().toISOString(),
+    await fetch(`/api/boards/${boardId}/elements`, {
+      method: 'DELETE',
     });
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    } else {
-      console.warn('Failed to clear elements in Firestore:', err);
-    }
+    console.warn('Failed to clear elements:', err);
   }
 }
 
@@ -341,17 +310,12 @@ export async function deleteBoard(boardId: string): Promise<void> {
   const list = getLocalBoards().filter((b) => b.id !== boardId);
   saveLocalBoards(list);
 
-  if (isFirestoreQuotaExceeded()) return;
-
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    await deleteDoc(docRef);
+    await fetch(`/api/boards/${boardId}`, {
+      method: 'DELETE',
+    });
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    } else {
-      console.warn('Failed to delete board from Firestore:', err);
-    }
+    console.warn('Failed to delete board from backend:', err);
   }
 }
 
@@ -362,17 +326,14 @@ export async function updateParticipantPresence(
   boardId: string,
   participant: BoardParticipant
 ): Promise<void> {
-  if (isFirestoreQuotaExceeded()) return;
   try {
-    const docRef = doc(db, BOARDS_COLLECTION, boardId);
-    await updateDoc(docRef, {
-      [`activeParticipants.${participant.userId}`]: cleanForFirestore(participant),
+    await fetch(`/api/boards/${boardId}/participants/${participant.userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(participant),
     });
   } catch (err) {
-    if (isQuotaError(err)) {
-      setFirestoreQuotaExceeded(true);
-    }
-    // Non-critical presence update
+    console.warn('Failed to update presence:', err);
   }
 }
 
@@ -399,29 +360,22 @@ export async function toggleBoardLock(boardId: string, isLocked: boolean): Promi
 export async function findBoardByCode(code: string): Promise<CollabBoard | null> {
   const sanitized = code.trim().toUpperCase();
 
-  // Check local cache first
   const localList = getLocalBoards();
   const localFound = localList.find((b) => b.code.toUpperCase() === sanitized);
   if (localFound) return localFound;
 
   try {
-    const collRef = collection(db, BOARDS_COLLECTION);
-    const q = query(collRef, where('code', '==', sanitized));
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      const docSnap = snapshot.docs[0];
-      const data = docSnap.data() as CollabBoard;
-      const board: CollabBoard = {
-        ...data,
-        id: docSnap.id,
-        elements: data.elements || {},
-        activeParticipants: data.activeParticipants || {},
-      };
-      saveLocalBoardSingle(board);
-      return board;
+    const res = await fetch('/api/boards');
+    if (res.ok) {
+      const boards: CollabBoard[] = await res.json();
+      const match = boards.find(b => b.code.toUpperCase() === sanitized);
+      if (match) {
+        saveLocalBoardSingle(match);
+        return match;
+      }
     }
   } catch (err) {
-    console.warn('findBoardByCode firestore error:', err);
+    console.warn('findBoardByCode backend error:', err);
   }
 
   return null;

@@ -6,3 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime backups and scratch files
+data/backups/
+data/*.bak*
+data/.mockData.cjs
+
+# User uploads (keep directory structure via .gitkeep)
+uploads/**
+!uploads/**/
+!uploads/**/.gitkeep

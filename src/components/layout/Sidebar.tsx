@@ -1,9 +1,9 @@
-import React from 'react';
 import {
   Award,
   BookOpen,
   CheckSquare,
   Compass,
+  FileQuestion,
   FileSpreadsheet,
   Flame,
   Home,
@@ -29,6 +29,8 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     setActiveTab,
     submissions = {},
     assignments = [],
+    quizzes = [],
+    quizSubmissions = {},
     missions = [],
     missionProgress = {},
     currentUser,
@@ -38,6 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = () => {
 
   const safeAssignments = assignments || [];
   const safeSubmissions = submissions || {};
+  const safeQuizzes = quizzes || [];
+  const safeQuizSubmissions = quizSubmissions || {};
   const safeMissionProgress = missionProgress || {};
 
   // Student pending tasks count
@@ -49,11 +53,29 @@ export const Sidebar: React.FC<SidebarProps> = () => {
         }).length
       : 0;
 
-  // Teacher pending grading count
+  // Student pending quizzes count
+  const pendingQuizzesCount =
+    currentRole === 'student' && currentUser
+      ? safeQuizzes.filter((q) => {
+          if (q.status !== 'published') return false;
+          const sub = safeQuizSubmissions[`${q.id}_${currentUser.uid}`];
+          return !sub || sub.status === 'in_progress';
+        }).length
+      : 0;
+
+  // Teacher pending grading count (tasks)
   const pendingGradingCount =
     currentRole === 'teacher'
       ? Object.values(safeSubmissions).filter(
           (s: any) => s && (s.status === 'submitted' || s.status === 'resubmitted')
+        ).length
+      : 0;
+
+  // Teacher pending quiz essay grading count
+  const pendingQuizGradingCount =
+    currentRole === 'teacher'
+      ? Object.values(safeQuizSubmissions).filter(
+          (s: any) => s && s.status === 'submitted'
         ).length
       : 0;
 
@@ -75,11 +97,11 @@ export const Sidebar: React.FC<SidebarProps> = () => {
       badgeColor: 'bg-rose-500 text-white',
     },
     {
-      id: 'papan-ide',
-      label: 'Papan Ide',
-      icon: LayoutGrid,
-      badge: 'Baru',
-      badgeColor: 'bg-indigo-600 text-white',
+      id: 'quiz',
+      label: 'Quiz',
+      icon: FileQuestion,
+      badge: pendingQuizzesCount > 0 ? `${pendingQuizzesCount} Kuis` : undefined,
+      badgeColor: 'bg-amber-500 text-white',
     },
     {
       id: 'misi',
@@ -101,13 +123,19 @@ export const Sidebar: React.FC<SidebarProps> = () => {
       badgeColor: 'bg-amber-500 text-white',
     },
     {
+      id: 'quiz',
+      label: 'Quiz',
+      icon: FileQuestion,
+      badge: pendingQuizGradingCount > 0 ? `${pendingQuizGradingCount} Perlu Diperiksa` : undefined,
+      badgeColor: 'bg-amber-500 text-white',
+    },
+    {
       id: 'papan-ide',
-      label: 'Papan Ide',
+      label: 'Ruang Kolaborasi',
       icon: LayoutGrid,
-      badge: 'Kolaborasi',
-      badgeColor: 'bg-indigo-600 text-white',
     },
     { id: 'misi', label: 'Misi & Poin', icon: Sparkles },
+    { id: 'leaderboard', label: 'Papan Peringkat', icon: Trophy },
     { id: 'siswa', label: 'Data Siswa', icon: Users },
     { id: 'pengumuman', label: 'Pengumuman', icon: Megaphone },
     { id: 'laporan', label: 'Laporan & Ekspor', icon: FileSpreadsheet },
@@ -129,6 +157,26 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           const Icon = item.icon;
           const isActive =
             activeTab === item.id || (item.id === 'tugas' && (activeTab === 'materi' || activeTab === 'tugas-kelas'));
+
+          if (item.disabled) {
+            return (
+              <button
+                key={item.id}
+                type="button"
+                disabled
+                title={`${item.label} sedang dinonaktifkan`}
+                className="w-full flex items-center justify-between px-3.5 py-3 rounded-2xl font-bold text-sm text-slate-400 bg-slate-50/70 border border-slate-200/60 opacity-60 cursor-not-allowed select-none text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="w-5 h-5 text-slate-400" />
+                  <span>{item.label}</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-200 text-slate-500">
+                  {item.badge || 'Nonaktif'}
+                </span>
+              </button>
+            );
+          }
 
           return (
             <button
@@ -168,19 +216,6 @@ export const Sidebar: React.FC<SidebarProps> = () => {
           );
         })}
       </nav>
-
-      {/* Gamification tip card */}
-      {currentRole === 'student' && (
-        <div className="mt-6 p-4 rounded-3xl bg-gradient-to-br from-[#101936] to-[#1C1242] border border-[#A66CFF]/30 text-white text-xs shadow-md">
-          <div className="flex items-center gap-2 text-[#FFD83D] font-extrabold mb-1.5">
-            <Flame className="w-4 h-4 fill-[#FFD83D]" />
-            <span className="text-[12px]">Tips Raih Poin Maksimal</span>
-          </div>
-          <p className="text-slate-300 leading-relaxed text-[11px]">
-            Kumpulkan tugas sebelum jam 18:00 dan selesaikan tantangan untuk raih bonus poin & badge keren!
-          </p>
-        </div>
-      )}
     </aside>
   );
 };

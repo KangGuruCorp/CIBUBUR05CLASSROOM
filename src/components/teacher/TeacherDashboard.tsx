@@ -135,32 +135,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </button>
             )}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-0.5">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 backdrop-blur-md text-[#FFD83D] text-[11px] font-bold mb-1 border border-white/10">
               <GraduationCap className="w-3.5 h-3.5" />
               <span>Portal Guru & Pengajar</span>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg sm:text-2xl font-extrabold font-display truncate">
-                Selamat Mengajar, {currentUser.displayName}!
-              </h1>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {onOpenEditProfile && (
-                  <button
-                    type="button"
-                    onClick={onOpenEditProfile}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition-all shadow-2xs cursor-pointer border border-white/20 hover:border-white/40 shrink-0"
-                    title="Ubah Nama Lengkap & Foto Profil Guru"
-                  >
-                    <PenLine className="w-3 h-3 text-[#FFD83D]" />
-                    <span>Profil Guru</span>
-                  </button>
-                )}
-              </div>
-            </div>
-            <p className="text-xs text-indigo-100 mt-0.5">
-              Kelas Aktif: <strong className="text-[#FFD83D]">{currentClass?.name}</strong> • Kelola pembelajaran & penilaian
+            <p className="text-xs sm:text-sm font-bold text-indigo-100 tracking-wide">
+              Selamat Mengajar,
             </p>
+            <h1 className="text-lg sm:text-2xl lg:text-3xl font-black font-display text-[#FFD83D] tracking-tight">
+              {currentUser.displayName}
+            </h1>
           </div>
         </div>
 
@@ -451,10 +436,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onNavigateTab('siswa')}
+                onClick={() => onNavigateTab('leaderboard')}
                 className="text-xs font-bold text-[#364FFF] hover:text-[#8B20FF] cursor-pointer"
               >
-                Lihat Semua
+                Lihat Peringkat →
               </button>
             </div>
 

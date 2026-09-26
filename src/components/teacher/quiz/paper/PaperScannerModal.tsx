@@ -1,0 +1,820 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Camera,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
+  SwitchCamera,
+  AlertCircle,
+  Users,
+  Image as ImageIcon,
+  HelpCircle,
+  RefreshCw,
+  ShieldAlert,
+  Smartphone,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import jsAruco2 from 'js-aruco2';
+import { Quiz, User } from '../../../../types';
+import { PaperModeAnswer, PaperModeSession, PaperOption } from '../../../../types/paperMode';
+import { useApp } from '../../../../context/AppContext';
+import { getMarkerOrientation } from '../../../../utils/aruco';
+import { submitPaperAnswer, controlPaperSession } from '../../../../lib/firestoreSync';
+
+interface PaperScannerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  quiz: Quiz;
+  classId: string;
+  initialQuestionIndex?: number;
+}
+
+export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
+  isOpen,
+  onClose,
+  quiz,
+  classId,
+  initialQuestionIndex = 0,
+}) => {
+  const { users = [], classes = [] } = useApp();
+
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(initialQuestionIndex);
+  const [isLocked, setIsLocked] = useState(false);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'permission_denied' | 'insecure_context' | 'not_found' | 'generic'>('generic');
+  const [showHelpSteps, setShowHelpSteps] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [photoToast, setPhotoToast] = useState<string | null>(null);
+
+  const [recentDetections, setRecentDetections] = useState<
+    { studentName: string; option: PaperOption; timestamp: number }[]
+  >([]);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const sessionId = useMemo(() => `paper_${quiz.id}_${classId}`, [quiz.id, classId]);
+
+  // Students in class
+  const classStudents = useMemo(() => {
+    return users
+      .filter((u) => u.role === 'student' && u.classIds?.includes(classId))
+      .sort((a, b) => (a.absentNumber ?? 999) - (b.absentNumber ?? 999));
+  }, [users, classId]);
+
+  // Map absentNumber/markerId to student
+  const studentByMarkerId = useMemo(() => {
+    const map = new Map<number, User>();
+    classStudents.forEach((st, idx) => {
+      const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : idx + 1;
+      map.set(markerId, st);
+    });
+    return map;
+  }, [classStudents]);
+
+  // Cache answered students for current question
+  const answeredStudentsRef = useRef<Record<string, PaperOption>>({});
+  const [answeredCount, setAnsweredCount] = useState(0);
+
+  // Play subtle beep sound on detection
+  const playBeep = () => {
+    if (!soundEnabled) return;
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch A5
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch {}
+  };
+
+  // Sync session state from server
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`/api/collections/paperSessions/${encodeURIComponent(sessionId)}`);
+        if (res.ok) {
+          const s: PaperModeSession = await res.json();
+          if (s && s.id) {
+            setCurrentQuestionIndex(s.currentQuestionIndex ?? 0);
+            setIsLocked(s.status === 'question_closed');
+            setShowCorrectAnswer(Boolean(s.showCorrectAnswer));
+
+            const answers = s.answersByQuestion?.[s.currentQuestionIndex ?? 0] || {};
+            const map: Record<string, PaperOption> = {};
+            Object.values(answers).forEach((a) => {
+              map[a.studentId] = a.selectedOption;
+            });
+            answeredStudentsRef.current = map;
+            setAnsweredCount(Object.keys(map).length);
+          }
+        }
+      } catch {}
+    };
+
+    loadSession();
+    const interval = setInterval(loadSession, 2000);
+    return () => clearInterval(interval);
+  }, [isOpen, sessionId]);
+
+  // Start Camera Stream
+  const startCamera = async () => {
+    setCameraError(null);
+
+    // 1. Check Secure Context (HTTPS or localhost)
+    const isLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const isSecure = typeof window !== 'undefined' && (window.isSecureContext || isLocalhost);
+
+    if (!isSecure && !isLocalhost) {
+      setErrorType('insecure_context');
+      setCameraError(
+        `Peramban memblokir streaming kamera langsung karena diakses melalui HTTP biasa (non-HTTPS: http://${window.location.hostname}:4000).`
+      );
+      return;
+    }
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setErrorType('insecure_context');
+      setCameraError('Fitur streaming kamera navigator.mediaDevices tidak tersedia di peramban ini.');
+      return;
+    }
+
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraError(null);
+    } catch (err: any) {
+      console.warn('getUserMedia error:', err);
+      if (
+        err.name === 'NotAllowedError' ||
+        err.name === 'PermissionDeniedError' ||
+        err.message?.toLowerCase().includes('permission') ||
+        err.message?.toLowerCase().includes('denied')
+      ) {
+        setErrorType('permission_denied');
+        setCameraError(
+          'Izin akses kamera telah ditolak oleh peramban. Silakan aktifkan izin kamera di pengaturan peramban.'
+        );
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setErrorType('not_found');
+        setCameraError('Kamera tidak ditemukan pada perangkat ini.');
+      } else {
+        setErrorType('generic');
+        setCameraError(err.message || 'Gagal menyalakan kamera.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    startCamera();
+
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [isOpen, facingMode]);
+
+  // Real-time Detection Loop
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const AR = (jsAruco2 as any).AR || (jsAruco2 as any);
+    const detector = new AR.Detector();
+
+    let animationFrameId: number;
+    let lastProcessTime = 0;
+
+    const processFrame = () => {
+      const now = performance.now();
+      // Throttle to ~18 fps for smooth real-time detection without heating mobile device
+      if (now - lastProcessTime > 55) {
+        lastProcessTime = now;
+
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+
+        if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+          const width = video.videoWidth || 640;
+          const height = video.videoHeight || 480;
+
+          if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+          }
+
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            // Draw video to canvas
+            ctx.drawImage(video, 0, 0, width, height);
+
+            // Get imageData and detect
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const markers = detector.detect(imageData);
+
+            // Draw detection AR overlays
+            if (markers && markers.length > 0) {
+              markers.forEach((marker: any) => {
+                const markerId = marker.id;
+                const { option } = getMarkerOrientation(marker.corners);
+
+                const student = studentByMarkerId.get(markerId);
+                const studentName = student ? student.displayName : `Siswa #${markerId}`;
+                const studentId = student ? student.uid : `marker_${markerId}`;
+
+                // Draw bounding box
+                ctx.beginPath();
+                ctx.moveTo(marker.corners[0].x, marker.corners[0].y);
+                for (let i = 1; i < marker.corners.length; i++) {
+                  ctx.lineTo(marker.corners[i].x, marker.corners[i].y);
+                }
+                ctx.closePath();
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#10b981'; // Emerald 500
+                ctx.stroke();
+
+                // Draw Top Edge indicator (the chosen side)
+                const c0 = marker.corners[0];
+                const c1 = marker.corners[1];
+                ctx.beginPath();
+                ctx.moveTo(c0.x, c0.y);
+                ctx.lineTo(c1.x, c1.y);
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#3b82f6'; // Blue for side A
+                ctx.stroke();
+
+                // Draw AR label pill
+                const centerX =
+                  (marker.corners[0].x +
+                    marker.corners[1].x +
+                    marker.corners[2].x +
+                    marker.corners[3].x) /
+                  4;
+                const centerY =
+                  (marker.corners[0].y +
+                    marker.corners[1].y +
+                    marker.corners[2].y +
+                    marker.corners[3].y) /
+                  4;
+
+                const labelText = `${studentName} ➔ [ ${option} ]`;
+
+                ctx.font = 'bold 16px ui-sans-serif, system-ui';
+                const textWidth = ctx.measureText(labelText).width;
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                ctx.beginPath();
+                ctx.roundRect(
+                  centerX - textWidth / 2 - 12,
+                  centerY - 32,
+                  textWidth + 24,
+                  30,
+                  8
+                );
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#10b981';
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, centerX, centerY - 17);
+
+                // If not locked, record answer if new or changed
+                if (!isLocked) {
+                  const prevOption = answeredStudentsRef.current[studentId];
+                  if (prevOption !== option) {
+                    answeredStudentsRef.current[studentId] = option;
+                    setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+
+                    // Submit to server
+                    const answerPayload: PaperModeAnswer = {
+                      studentId,
+                      markerId,
+                      studentName,
+                      selectedOption: option,
+                      timestamp: Date.now(),
+                    };
+                    submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
+
+                    // Trigger sound & haptic
+                    playBeep();
+                    if ('vibrate' in navigator) {
+                      try {
+                        navigator.vibrate(40);
+                      } catch {}
+                    }
+
+                    // Add to recent detections feed
+                    setRecentDetections((prev) => [
+                      { studentName, option, timestamp: Date.now() },
+                      ...prev.slice(0, 4),
+                    ]);
+                  }
+                }
+              });
+            }
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(processFrame);
+    };
+
+    animationFrameId = requestAnimationFrame(processFrame);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isOpen, isLocked, sessionId, currentQuestionIndex, studentByMarkerId, soundEnabled]);
+
+  // Fallback: Photo Capture & Processing (works without WebRTC live stream permissions!)
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingPhoto(true);
+    setPhotoToast(null);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const offCanvas = document.createElement('canvas');
+          offCanvas.width = img.width;
+          offCanvas.height = img.height;
+          const ctx = offCanvas.getContext('2d');
+          if (!ctx) {
+            setIsProcessingPhoto(false);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0);
+          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+
+          const AR = (jsAruco2 as any).AR || (jsAruco2 as any);
+          const detector = new AR.Detector();
+          const markers = detector.detect(imageData);
+
+          if (!markers || markers.length === 0) {
+            setPhotoToast('Tidak ada kartu ArUco yang terdeteksi pada foto. Pastikan kartu terlihat jelas dan tidak buram.');
+            setIsProcessingPhoto(false);
+            return;
+          }
+
+          let detectedCount = 0;
+          markers.forEach((marker: any) => {
+            const markerId = marker.id;
+            const { option } = getMarkerOrientation(marker.corners);
+            const student = studentByMarkerId.get(markerId);
+            const studentName = student ? student.displayName : `Siswa #${markerId}`;
+            const studentId = student ? student.uid : `marker_${markerId}`;
+
+            answeredStudentsRef.current[studentId] = option;
+            const answerPayload: PaperModeAnswer = {
+              studentId,
+              markerId,
+              studentName,
+              selectedOption: option,
+              timestamp: Date.now(),
+            };
+            submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
+            detectedCount++;
+          });
+
+          setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+          playBeep();
+          setPhotoToast(`🎉 Berhasil memindai ${detectedCount} jawaban siswa dari foto!`);
+          setTimeout(() => setPhotoToast(null), 5000);
+        } catch (err: any) {
+          setPhotoToast(`Gagal memproses foto: ${err.message}`);
+        } finally {
+          setIsProcessingPhoto(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const activeQuestion = quiz.questions[currentQuestionIndex] || quiz.questions[0];
+
+  const handleNextQuestion = async () => {
+    if (currentQuestionIndex < quiz.questions.length - 1) {
+      const nextIdx = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextIdx);
+      setIsLocked(false);
+      setShowCorrectAnswer(false);
+      answeredStudentsRef.current = {};
+      setAnsweredCount(0);
+      setRecentDetections([]);
+
+      await controlPaperSession(sessionId, {
+        currentQuestionIndex: nextIdx,
+        status: 'active',
+        showLiveStats: false,
+        showCorrectAnswer: false,
+      });
+    }
+  };
+
+  const handlePrevQuestion = async () => {
+    if (currentQuestionIndex > 0) {
+      const prevIdx = currentQuestionIndex - 1;
+      setCurrentQuestionIndex(prevIdx);
+      setIsLocked(false);
+      setShowCorrectAnswer(false);
+      answeredStudentsRef.current = {};
+      setAnsweredCount(0);
+      setRecentDetections([]);
+
+      await controlPaperSession(sessionId, {
+        currentQuestionIndex: prevIdx,
+        status: 'active',
+        showLiveStats: false,
+        showCorrectAnswer: false,
+      });
+    }
+  };
+
+  const handleToggleLock = async () => {
+    const nextLocked = !isLocked;
+    setIsLocked(nextLocked);
+    await controlPaperSession(sessionId, {
+      status: nextLocked ? 'question_closed' : 'active',
+    });
+  };
+
+  const handleToggleReveal = async () => {
+    const nextReveal = !showCorrectAnswer;
+    setShowCorrectAnswer(nextReveal);
+    await controlPaperSession(sessionId, {
+      showCorrectAnswer: nextReveal,
+      showLiveStats: nextReveal,
+    });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black text-white flex flex-col overflow-hidden font-sans select-none">
+      {/* Hidden File Input for Native Camera Photo Capture */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhotoCapture}
+        className="hidden"
+      />
+
+      {/* Top Camera Status Bar */}
+      <header className="px-4 py-3 bg-slate-900/90 backdrop-blur-md flex items-center justify-between z-20 shrink-0 border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40">
+            <Camera className="w-4 h-4 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-xs font-black text-white leading-tight">
+              Kamera Pemindai Guru
+            </h3>
+            <p className="text-[10px] text-slate-400">
+              Soal {currentQuestionIndex + 1}/{quiz.questions.length} •{' '}
+              <strong className="text-emerald-400 font-bold">{answeredCount}</strong> /{' '}
+              {classStudents.length} Siswa
+            </p>
+          </div>
+        </div>
+
+        {/* Action icons */}
+        <div className="flex items-center gap-2">
+          {/* Snap Photo Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+            title="Ambil foto kartu siswa dengan kamera bawaan HP"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Foto</span>
+          </button>
+
+          {/* Switch Camera */}
+          <button
+            type="button"
+            onClick={() =>
+              setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
+            }
+            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
+            title="Ganti Kamera Depan/Belakang"
+          >
+            <SwitchCamera className="w-4 h-4" />
+          </button>
+
+          {/* Sound Toggle */}
+          <button
+            type="button"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
+            title="Bip Suara Deteksi"
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-400" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
+          {/* Close */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/80 text-slate-300 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* Camera Preview with AR Overlay */}
+      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+        {/* Hidden video element supplying frames */}
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          autoPlay
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+
+        {/* Canvas for AR detection overlay */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none"
+        />
+
+        {/* Processing Photo Indicator */}
+        {isProcessingPhoto && (
+          <div className="z-40 absolute inset-0 bg-black/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="w-10 h-10 text-emerald-400 animate-spin" />
+            <p className="text-sm font-bold text-white">Sedang Memproses Foto Jawaban Siswa...</p>
+          </div>
+        )}
+
+        {/* Photo Result Toast */}
+        {photoToast && (
+          <div className="z-40 absolute top-4 left-1/2 -translate-x-1/2 max-w-md w-11/12 p-3.5 bg-slate-900/95 border border-emerald-400 rounded-2xl text-xs font-bold text-white shadow-2xl flex items-center justify-between gap-2">
+            <span>{photoToast}</span>
+            <button
+              type="button"
+              onClick={() => setPhotoToast(null)}
+              className="p-1 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Interactive Error / Permission Denied Diagnostic Card */}
+        {cameraError && (
+          <div className="z-30 p-5 max-w-md w-11/12 mx-auto bg-slate-900/95 border border-rose-500/50 rounded-3xl text-left space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-black text-white">
+                  {errorType === 'permission_denied'
+                    ? 'Izin Akses Kamera Ditolak'
+                    : errorType === 'insecure_context'
+                    ? 'Peramban Membutuhkan Koneksi Aman'
+                    : 'Kamera Tidak Tersedia'}
+                </h4>
+                <p className="text-xs text-rose-200 mt-1 leading-relaxed">{cameraError}</p>
+              </div>
+            </div>
+
+            {/* Action Solution 1: Use Native Photo Capture (Guaranteed to work without permission errors!) */}
+            <div className="p-3.5 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Solusi Cepat (Paling Praktis):</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-normal">
+                Gunakan kamera bawaan ponsel untuk mengambil foto jawaban siswa di kelas.
+                Sistem akan membaca seluruh kartu yang ada di foto secara instan.
+              </p>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Ambil Foto Jawaban Kelas Sekarang</span>
+              </button>
+            </div>
+
+            {/* Action Solution 2: Retry Permission */}
+            <button
+              type="button"
+              onClick={startCamera}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Coba Minta Izin Kamera Lagi</span>
+            </button>
+
+            {/* Collapsible Step-by-Step Unblock Guide */}
+            <div className="border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowHelpSteps(!showHelpSteps)}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-400 hover:text-white"
+              >
+                <span className="flex items-center gap-1.5">
+                  <HelpCircle className="w-4 h-4 text-indigo-400" />
+                  Cara Membuka Blokir Izin di Peramban
+                </span>
+                {showHelpSteps ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showHelpSteps && (
+                <div className="mt-3 space-y-3 text-[11px] text-slate-300 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800">
+                  <div>
+                    <strong className="text-white block mb-1">Di Google Chrome (Laptop / PC):</strong>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Klik ikon <strong>Gembok (🔒)</strong> atau <strong>Setelan Situs</strong> di sebelah kiri alamat URL (`localhost:4000`).</li>
+                      <li>Pada menu <strong>Kamera</strong>, ubah pilihan menjadi <strong>Izinkan (Allow)</strong>.</li>
+                      <li>Muat ulang halaman (F5).</li>
+                    </ol>
+                  </div>
+
+                  <div>
+                    <strong className="text-white block mb-1">Di Google Chrome (Ponsel Android):</strong>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Ketuk ikon titik tiga <strong>(⋮)</strong> di pojok kanan atas &gt; <strong>Setelan</strong>.</li>
+                      <li>Pilih <strong>Setelan Situs</strong> &gt; <strong>Kamera</strong>.</li>
+                      <li>Cari alamat web ini pada daftar <em>Diblokir</em>, lalu ketuk dan pilih <strong>Izinkan</strong>.</li>
+                    </ol>
+                  </div>
+
+                  <div>
+                    <strong className="text-white block mb-1">Akses via Laptop Proyektor:</strong>
+                    <p className="leading-relaxed">
+                      Anda juga dapat menjalankan pemindai langsung di laptop yang terhubung ke proyektor
+                      dengan menekan tombol <strong>"Buka Pemindai"</strong> pada layar proyektor.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Live Scan Notification Floater */}
+        {recentDetections.length > 0 && (
+          <div className="absolute top-4 left-4 z-20 space-y-1.5 pointer-events-none max-w-xs">
+            {recentDetections.slice(0, 3).map((det, idx) => (
+              <div
+                key={`${det.studentName}_${det.timestamp}`}
+                className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-emerald-400/50 backdrop-blur-md text-white text-xs font-bold flex items-center gap-2 shadow-lg animate-fade-in"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">{det.studentName}</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-slate-950 font-black text-[10px]">
+                  {det.option}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Scanning Reticle Aim Guide */}
+        {!cameraError && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-15">
+            <div className="w-64 h-64 border border-white/20 rounded-3xl relative">
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-3 border-l-3 border-emerald-400 rounded-tl-xl" />
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-3 border-r-3 border-emerald-400 rounded-tr-xl" />
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-3 border-l-3 border-emerald-400 rounded-bl-xl" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-3 border-r-3 border-emerald-400 rounded-br-xl" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Remote Control for Teacher */}
+      <footer className="p-4 bg-slate-900 border-t border-slate-800 z-20 shrink-0 space-y-3">
+        {/* Question prompt summary */}
+        <div className="px-3 py-1.5 bg-slate-800/80 rounded-xl flex items-center justify-between text-xs">
+          <span className="font-bold text-slate-300 truncate mr-2">
+            #{currentQuestionIndex + 1}: {activeQuestion.prompt}
+          </span>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-[11px] font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Ambil Foto</span>
+          </button>
+        </div>
+
+        {/* Remote Action Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Lock Button */}
+          <button
+            type="button"
+            onClick={handleToggleLock}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+              isLocked
+                ? 'bg-rose-600 text-white shadow-md'
+                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+            }`}
+          >
+            {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            <span>{isLocked ? 'Kunci' : 'Kunci Jawaban'}</span>
+          </button>
+
+          {/* Reveal Button */}
+          <button
+            type="button"
+            onClick={handleToggleReveal}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+              showCorrectAnswer
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            }`}
+          >
+            {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <span>{showCorrectAnswer ? 'Tutup Kunci' : 'Buka Kunci'}</span>
+          </button>
+
+          {/* Nav Prev */}
+          <button
+            type="button"
+            disabled={currentQuestionIndex === 0}
+            onClick={handlePrevQuestion}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Nav Next */}
+          <button
+            type="button"
+            disabled={currentQuestionIndex >= quiz.questions.length - 1}
+            onClick={handleNextQuestion}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+};

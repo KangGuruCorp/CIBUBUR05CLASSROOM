@@ -17,8 +17,8 @@ import { getLevelInfo } from '../../utils/gamification';
 import { PointIcon } from '../common/PointIcon';
 
 export const StudentLeaderboard: React.FC = () => {
-  const { users, userStats, levels, currentUser, currentClassId, classes } = useApp();
-  const [periodFilter, setPeriodFilter] = useState<'week' | 'month' | 'semester' | 'all'>('week');
+  const { users, userStats, levels, currentUser, currentClassId, classes, pointLedger } = useApp();
+  const [periodFilter, setPeriodFilter] = useState<'today' | 'month' | 'semester' | 'all'>('all');
 
   if (!currentUser) return null;
 
@@ -29,7 +29,7 @@ export const StudentLeaderboard: React.FC = () => {
     (u) => u.role === 'student' && (u.classIds || []).includes(currentClassId)
   );
 
-  // Map to leaderboard entry with pseudo-period score or total score
+  // Map to leaderboard entry with synchronized real points
   const leaderboardEntries = classStudents
     .map((student) => {
       const stats: UserStats = userStats[student.uid] || {
@@ -46,19 +46,37 @@ export const StudentLeaderboard: React.FC = () => {
         updatedAt: new Date().toISOString(),
       };
 
-      // Period scaling for demo
-      let displayPoints = stats.totalPoints;
-      if (periodFilter === 'week') {
-        displayPoints = Math.round(stats.totalPoints * 0.45);
+      const userLedgers = (pointLedger || []).filter((pl) => pl && pl.userId === student.uid);
+      const allLedgerPoints = userLedgers.reduce((sum, pl) => sum + (pl.amount || 0), 0);
+      const totalPoints = Math.max(0, userLedgers.length > 0 ? allLedgerPoints : (stats.totalPoints || 0));
+      const studentXp = stats.totalXp !== undefined ? stats.totalXp : totalPoints;
+      let displayPoints = totalPoints;
+
+      if (periodFilter === 'today') {
+        const todayStr = new Date().toDateString();
+        const earnedToday = userLedgers
+          .filter((pl) => new Date(pl.createdAt).toDateString() === todayStr)
+          .reduce((sum, pl) => sum + (pl.amount || 0), 0);
+        displayPoints = earnedToday;
       } else if (periodFilter === 'month') {
-        displayPoints = Math.round(stats.totalPoints * 0.8);
+        const now = new Date();
+        const cMonth = now.getMonth();
+        const cYear = now.getFullYear();
+        const earnedMonth = userLedgers
+          .filter((pl) => {
+            const d = new Date(pl.createdAt);
+            return d.getMonth() === cMonth && d.getFullYear() === cYear;
+          })
+          .reduce((sum, pl) => sum + (pl.amount || 0), 0);
+        displayPoints = earnedMonth;
       }
 
-      const levelInfo = getLevelInfo(stats.totalPoints, levels);
+      const levelInfo = getLevelInfo(studentXp, levels);
 
       return {
         user: student,
         points: displayPoints,
+        xp: studentXp,
         level: levelInfo.currentLevel,
         academicPoints: stats.academicPoints,
         participationPoints: stats.participationPoints,
@@ -105,9 +123,9 @@ export const StudentLeaderboard: React.FC = () => {
           {/* Period Filter Selector */}
           <div className="flex items-center gap-1 bg-black/30 p-1.5 rounded-2xl backdrop-blur-md border border-white/15">
             {[
-              { id: 'week', label: 'Minggu Ini' },
+              { id: 'today', label: 'Hari Ini' },
               { id: 'month', label: 'Bulan Ini' },
-              { id: 'all', label: 'Semua Waktu' },
+              { id: 'all', label: 'Sepanjang Waktu' },
             ].map((p) => (
               <button
                 key={p.id}

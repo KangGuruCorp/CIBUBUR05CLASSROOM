@@ -159,23 +159,44 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         let previewUrl: string | undefined = undefined;
 
         if (isImg) {
-          // Automatic compression for images/photos ensures high visual quality while staying ~100-200KB for Firestore
+          // Automatic compression for images/photos ensures high visual quality
           fileDataUrl = await compressGeneralImage(file);
           previewUrl = fileDataUrl;
         } else {
-          // Document files (PDF, Word): Ensure document fits in Firestore document size
-          if (file.size > 800 * 1024) {
-            setErrorMsg(
-              `Dokumen "${file.name}" berukuran ${(file.size / (1024 * 1024)).toFixed(1)} MB. Agar tersimpan online di database, dokumen Word/PDF maksimal 800 KB (silakan kompres PDF terlebih dahulu). Foto/gambar otomatis dikompresi sistem.`
-            );
+          // Document files (PDF, Word)
+          if (file.size > 15 * 1024 * 1024) {
+            setErrorMsg(`Dokumen "${file.name}" melebihi batas maksimal 15 MB.`);
             continue;
           }
           fileDataUrl = await readFileAsDataUrl(file);
         }
 
+        // Upload directly to server to keep database lightweight
+        let finalUrl = fileDataUrl;
+        try {
+          const uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: fileDataUrl,
+              fileName: file.name,
+              folder: 'attachments',
+            }),
+          });
+          if (uploadRes.ok) {
+            const uploadJson = await uploadRes.json();
+            if (uploadJson.url) {
+              finalUrl = uploadJson.url;
+              previewUrl = uploadJson.url;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('Direct upload fallback to dataUrl:', uploadErr);
+        }
+
         newFiles.push({
           name: file.name,
-          url: fileDataUrl,
+          url: finalUrl,
           type: file.type || (isWord ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isPdf ? 'application/pdf' : 'application/octet-stream'),
           size: file.size,
           previewUrl,

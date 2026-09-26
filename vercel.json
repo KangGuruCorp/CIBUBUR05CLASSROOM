@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "http://158.140.178.132:3033/api/:match*"
+    },
+    {
+      "source": "/uploads/:match*",
+      "destination": "http://158.140.178.132:3033/uploads/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

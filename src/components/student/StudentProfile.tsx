@@ -58,7 +58,8 @@ export const StudentProfile: React.FC<StudentProfileProps> = ({ onOpenAvatarPick
     badgeCount: 0,
   };
 
-  const levelInfo = getLevelInfo(stats.totalPoints, levels);
+  const studentXp = stats.totalXp !== undefined ? stats.totalXp : (stats.totalPoints || 0);
+  const levelInfo = getLevelInfo(studentXp, levels);
   const currentClass = (classes || []).find((c) => c.id === currentClassId) || classes[0];
 
   const myBadges = safeUserBadges.filter((b) => b && b.userId === currentUser.uid);

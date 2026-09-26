@@ -33,6 +33,15 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleClearCacheAndReload = () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {}
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
   public render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -50,14 +59,27 @@ export class ErrorBoundary extends Component<Props, State> {
               <p className="text-sm text-slate-400 leading-relaxed">
                 Aplikasi mengalami kendala saat memuat data. Silakan klik tombol di bawah untuk memuat ulang.
               </p>
+              {this.state.error && (
+                <p className="text-xs text-rose-400 font-mono bg-slate-950/60 p-2 rounded-lg break-all text-left">
+                  {this.state.error.message}
+                </p>
+              )}
             </div>
-            <button
-              onClick={this.handleReload}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 cursor-pointer"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Muat Ulang Aplikasi</span>
-            </button>
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={this.handleReload}
+                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Muat Ulang Aplikasi</span>
+              </button>
+              <button
+                onClick={this.handleClearCacheAndReload}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-700/60 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer"
+              >
+                <span>Bersihkan Cache & Muat Ulang</span>
+              </button>
+            </div>
           </div>
         </div>
       );

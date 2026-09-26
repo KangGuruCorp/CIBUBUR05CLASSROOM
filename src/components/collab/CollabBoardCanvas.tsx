@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -59,6 +59,266 @@ interface CollabBoardCanvasProps {
   onExit?: () => void;
 }
 
+interface StickyNoteItemProps {
+  elem: BoardElement;
+  isSelected: boolean;
+  canEdit: boolean;
+  isTeacher: boolean;
+  currentUserId: string;
+  onDragStart: (e: React.PointerEvent, elem: BoardElement) => void;
+  onDelete: (elemId: string) => void;
+  onColorChange: (color: string) => void;
+  onTextChange: (elem: BoardElement, text: string) => void;
+  onFocusChange: (elemId: string, isFocused: boolean) => void;
+}
+
+const StickyNoteItem: React.FC<StickyNoteItemProps> = React.memo(
+  ({
+    elem,
+    isSelected,
+    canEdit,
+    isTeacher,
+    currentUserId,
+    onDragStart,
+    onDelete,
+    onColorChange,
+    onTextChange,
+    onFocusChange,
+  }) => {
+    const [localText, setLocalText] = useState(elem.text || '');
+    const isDirtyRef = useRef(false);
+    const debounceTimerRef = useRef<any>(null);
+
+    // Sync remote text when remote changes and local user is not holding uncommitted dirty edits
+    useEffect(() => {
+      if (!isDirtyRef.current) {
+        setLocalText(elem.text || '');
+      }
+    }, [elem.text]);
+
+    useEffect(() => {
+      return () => {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      };
+    }, []);
+
+    const handleFocus = () => {
+      onFocusChange(elem.id, true);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      isDirtyRef.current = true;
+      setLocalText(val);
+
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        isDirtyRef.current = false;
+        onTextChange(elem, val);
+      }, 250);
+    };
+
+    const handleBlur = () => {
+      onFocusChange(elem.id, false);
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (isDirtyRef.current) {
+        isDirtyRef.current = false;
+        onTextChange(elem, localText);
+      }
+    };
+
+    return (
+      <div
+        key={elem.id}
+        onPointerDown={(e) => onDragStart(e, elem)}
+        className={`absolute group cursor-move rounded-2xl p-3 sm:p-4 shadow-md transition-shadow flex flex-col justify-between ${
+          isSelected ? 'ring-3 ring-indigo-500 ring-offset-2 scale-[1.02] shadow-xl' : 'hover:shadow-lg'
+        }`}
+        style={{
+          left: `${elem.x}px`,
+          top: `${elem.y}px`,
+          width: `${elem.width}px`,
+          height: `${elem.height}px`,
+          backgroundColor: elem.color,
+          zIndex: elem.zIndex || 15,
+          touchAction: 'none',
+        }}
+      >
+        {/* Author Header & Delete Button */}
+        <div className="flex items-center justify-between pb-1.5 border-b border-black/10 select-none">
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            <span className="text-[11px] font-bold text-slate-800/80 truncate">
+              ✍️ {elem.authorName}
+            </span>
+            {elem.authorRole === 'teacher' && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-indigo-600 text-white">
+                Guru
+              </span>
+            )}
+          </div>
+
+          {canEdit && (elem.authorId === currentUserId || isTeacher) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(elem.id);
+              }}
+              className="board-interactive-control p-1 text-slate-600 hover:text-rose-600 hover:bg-black/5 rounded-md cursor-pointer transition-colors"
+              title="Hapus Sticky Note"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Sticky Note Editable Textarea */}
+        <textarea
+          disabled={!canEdit}
+          placeholder="Ketik idemu di sini..."
+          value={localText}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          className="board-interactive-control flex-1 w-full bg-transparent resize-none text-slate-900 font-medium text-xs sm:text-sm leading-relaxed p-1 focus:outline-hidden placeholder:text-black/30 select-text"
+        />
+
+        {/* Color quick-switch bar on selection */}
+        {isSelected && canEdit && (
+          <div className="board-interactive-control flex items-center justify-center gap-1 pt-1 border-t border-black/10 select-none">
+            {STICKY_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onColorChange(c.bg);
+                }}
+                className={`w-4 h-4 rounded-full border border-black/20 transition-transform ${
+                  elem.color === c.bg ? 'scale-125 ring-2 ring-black/30' : 'hover:scale-110'
+                }`}
+                style={{ backgroundColor: c.bg }}
+                title={c.name}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+);
+StickyNoteItem.displayName = 'StickyNoteItem';
+
+interface TextBoxItemProps {
+  elem: BoardElement;
+  isSelected: boolean;
+  canEdit: boolean;
+  onDragStart: (e: React.PointerEvent, elem: BoardElement) => void;
+  onDelete: (elemId: string) => void;
+  onTextChange: (elem: BoardElement, text: string) => void;
+  onFocusChange: (elemId: string, isFocused: boolean) => void;
+}
+
+const TextBoxItem: React.FC<TextBoxItemProps> = React.memo(
+  ({
+    elem,
+    isSelected,
+    canEdit,
+    onDragStart,
+    onDelete,
+    onTextChange,
+    onFocusChange,
+  }) => {
+    const [localText, setLocalText] = useState(elem.text || '');
+    const isDirtyRef = useRef(false);
+    const debounceTimerRef = useRef<any>(null);
+
+    useEffect(() => {
+      if (!isDirtyRef.current) {
+        setLocalText(elem.text || '');
+      }
+    }, [elem.text]);
+
+    useEffect(() => {
+      return () => {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      };
+    }, []);
+
+    const handleFocus = () => {
+      onFocusChange(elem.id, true);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      isDirtyRef.current = true;
+      setLocalText(val);
+
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        isDirtyRef.current = false;
+        onTextChange(elem, val);
+      }, 250);
+    };
+
+    const handleBlur = () => {
+      onFocusChange(elem.id, false);
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (isDirtyRef.current) {
+        isDirtyRef.current = false;
+        onTextChange(elem, localText);
+      }
+    };
+
+    return (
+      <div
+        key={elem.id}
+        onPointerDown={(e) => onDragStart(e, elem)}
+        className={`absolute group cursor-move p-2 rounded-lg ${
+          isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50/20' : ''
+        }`}
+        style={{
+          left: `${elem.x}px`,
+          top: `${elem.y}px`,
+          width: `${elem.width}px`,
+          zIndex: elem.zIndex || 10,
+          touchAction: 'none',
+        }}
+      >
+        <input
+          type="text"
+          disabled={!canEdit}
+          value={localText}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          className="board-interactive-control w-full bg-transparent font-bold tracking-tight text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-hidden select-text"
+          style={{ fontSize: `${elem.fontSize || 18}px` }}
+        />
+        {isSelected && canEdit && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(elem.id);
+            }}
+            className="board-interactive-control absolute -top-3 -right-3 p-1.5 bg-rose-600 text-white rounded-full shadow-md hover:bg-rose-700 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    );
+  }
+);
+TextBoxItem.displayName = 'TextBoxItem';
+
 type ToolMode = 'select' | 'hand' | 'sticky' | 'pen' | 'text' | 'shape' | 'eraser';
 
 export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
@@ -91,6 +351,32 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const isDrawingRef = useRef(false);
   const currentStrokePoints = useRef<BoardDrawingPoint[]>([]);
+
+  // Local elements state for responsive, 60fps interactions
+  const [localElements, setLocalElements] = useState<Record<string, BoardElement>>(board.elements || {});
+  const activeDragIdRef = useRef<string | null>(null);
+  const activeFocusedElementIdRef = useRef<string | null>(null);
+  const lastDragSyncRef = useRef<number>(0);
+
+  // Synchronize with remote board.elements while preserving coordinates of actively dragged element
+  useEffect(() => {
+    setLocalElements((prev) => {
+      const incoming = board.elements || {};
+      if (!activeDragIdRef.current) {
+        return incoming;
+      }
+      const merged = { ...incoming };
+      if (activeDragIdRef.current && prev[activeDragIdRef.current]) {
+        const dragId = activeDragIdRef.current;
+        merged[dragId] = {
+          ...(incoming[dragId] || prev[dragId]),
+          x: prev[dragId].x,
+          y: prev[dragId].y,
+        };
+      }
+      return merged;
+    });
+  }, [board.elements]);
 
   // Dragging elements state
   const [isDraggingElement, setIsDraggingElement] = useState(false);
@@ -158,7 +444,12 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
     }
   }, []);
 
-  // Redraw existing drawing elements on the HTML5 canvas layer
+  // Redraw existing drawing elements on HTML5 canvas only when drawings actually change
+  const drawingsKey = useMemo(() => {
+    const drawings = Object.values(localElements).filter((e) => e.type === 'drawing');
+    return drawings.map((d) => `${d.id}_${d.points?.length || 0}_${d.color}_${d.strokeWidth || 4}`).join('|');
+  }, [localElements]);
+
   useEffect(() => {
     const canvas = drawCanvasRef.current;
     if (!canvas) return;
@@ -167,8 +458,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all stored drawing strokes
-    const elements = Object.values(board.elements || {});
+    const elements = Object.values(localElements);
     elements.forEach((elem) => {
       if (elem.type === 'drawing' && elem.points && elem.points.length > 1) {
         ctx.beginPath();
@@ -185,7 +475,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
         ctx.stroke();
       }
     });
-  }, [board.elements]);
+  }, [drawingsKey, localElements]);
 
   // Handle Zoom
   const handleZoom = (delta: number) => {
@@ -240,6 +530,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      setLocalElements((prev) => ({ ...prev, [newId]: newElem }));
       upsertBoardElement(board.id, newElem);
       setSelectedElementId(newId);
       setActiveTool('select');
@@ -266,6 +557,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      setLocalElements((prev) => ({ ...prev, [newId]: newElem }));
       upsertBoardElement(board.id, newElem);
       setSelectedElementId(newId);
       setActiveTool('select');
@@ -291,6 +583,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      setLocalElements((prev) => ({ ...prev, [newId]: newElem }));
       upsertBoardElement(board.id, newElem);
       setSelectedElementId(newId);
       setActiveTool('select');
@@ -340,18 +633,37 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
     if (isDraggingElement && selectedElementId && canEdit) {
       const dx = (e.clientX - dragStartPos.current.mouseX) / scale;
       const dy = (e.clientY - dragStartPos.current.mouseY) / scale;
-      const elem = board.elements?.[selectedElementId];
+      const elem = localElements[selectedElementId];
       if (elem) {
         const newX = Math.round(dragStartPos.current.elemX + dx);
         const newY = Math.round(dragStartPos.current.elemY + dy);
-        // Only broadcast if changed
+
         if (elem.x !== newX || elem.y !== newY) {
-          upsertBoardElement(board.id, {
-            ...elem,
-            x: newX,
-            y: newY,
-            updatedAt: new Date().toISOString(),
+          // Instant local update (60fps/120fps responsive movement)
+          setLocalElements((prev) => {
+            const cur = prev[selectedElementId];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [selectedElementId]: {
+                ...cur,
+                x: newX,
+                y: newY,
+              },
+            };
           });
+
+          // Throttled sync to backend (at most once every 75ms)
+          const now = Date.now();
+          if (now - lastDragSyncRef.current > 75) {
+            lastDragSyncRef.current = now;
+            upsertBoardElement(board.id, {
+              ...elem,
+              x: newX,
+              y: newY,
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
       }
       return;
@@ -398,121 +710,232 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
   };
 
   // Pointer Up
-  const handlePointerUp = (e?: React.PointerEvent) => {
-    if (isPanning) {
-      setIsPanning(false);
-    }
-
-    if (isDraggingElement) {
-      setIsDraggingElement(false);
-    }
-
-    if (isDrawingRef.current) {
-      isDrawingRef.current = false;
-      setIsDrawing(false);
-
-      if (e) {
-        try {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }
-        } catch {}
+  const handlePointerUp = useCallback(
+    (e?: React.PointerEvent) => {
+      if (isPanning) {
+        setIsPanning(false);
       }
 
-      // Clear the temporary live drawing canvas
-      const liveCanvas = liveCanvasRef.current;
-      if (liveCanvas) {
-        const ctx = liveCanvas.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-      }
-
-      const pts = currentStrokePoints.current;
-      if (pts.length > 0) {
-        const finalPoints =
-          pts.length === 1
-            ? [{ ...pts[0] }, { x: pts[0].x + 0.1, y: pts[0].y + 0.1 }]
-            : [...pts];
-
-        // Draw immediately onto the base canvas so there is ZERO delay/flash before Firestore updates
-        const baseCanvas = drawCanvasRef.current;
-        if (baseCanvas) {
-          const ctx = baseCanvas.getContext('2d');
-          if (ctx) {
-            ctx.beginPath();
-            ctx.strokeStyle = activePenColor;
-            ctx.lineWidth = activeStrokeWidth;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.moveTo(finalPoints[0].x, finalPoints[0].y);
-            for (let i = 1; i < finalPoints.length; i++) {
-              ctx.lineTo(finalPoints[i].x, finalPoints[i].y);
-            }
-            ctx.stroke();
+      if (isDraggingElement) {
+        setIsDraggingElement(false);
+        if (selectedElementId) {
+          const elem = localElements[selectedElementId];
+          if (elem) {
+            upsertBoardElement(board.id, {
+              ...elem,
+              updatedAt: new Date().toISOString(),
+            });
           }
         }
-
-        const newStrokeId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        const newStroke: BoardElement = {
-          id: newStrokeId,
-          type: 'drawing',
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-          color: activePenColor,
-          strokeWidth: activeStrokeWidth,
-          points: finalPoints,
-          authorId: currentUser.uid,
-          authorName: currentUser.displayName,
-          authorRole: currentUser.role === 'teacher' ? 'teacher' : 'student',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        upsertBoardElement(board.id, newStroke);
+        setTimeout(() => {
+          activeDragIdRef.current = null;
+        }, 150);
       }
-      currentStrokePoints.current = [];
-    }
-  };
+
+      if (isDrawingRef.current) {
+        isDrawingRef.current = false;
+        setIsDrawing(false);
+
+        if (e) {
+          try {
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }
+          } catch {}
+        }
+
+        // Clear the temporary live drawing canvas
+        const liveCanvas = liveCanvasRef.current;
+        if (liveCanvas) {
+          const ctx = liveCanvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+        }
+
+        const pts = currentStrokePoints.current;
+        if (pts.length > 0) {
+          const finalPoints =
+            pts.length === 1
+              ? [{ ...pts[0] }, { x: pts[0].x + 0.1, y: pts[0].y + 0.1 }]
+              : [...pts];
+
+          // Draw immediately onto the base canvas so there is ZERO delay/flash
+          const baseCanvas = drawCanvasRef.current;
+          if (baseCanvas) {
+            const ctx = baseCanvas.getContext('2d');
+            if (ctx) {
+              ctx.beginPath();
+              ctx.strokeStyle = activePenColor;
+              ctx.lineWidth = activeStrokeWidth;
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
+              ctx.moveTo(finalPoints[0].x, finalPoints[0].y);
+              for (let i = 1; i < finalPoints.length; i++) {
+                ctx.lineTo(finalPoints[i].x, finalPoints[i].y);
+              }
+              ctx.stroke();
+            }
+          }
+
+          const newStrokeId = `draw_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+          const newStroke: BoardElement = {
+            id: newStrokeId,
+            type: 'drawing',
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            color: activePenColor,
+            strokeWidth: activeStrokeWidth,
+            points: finalPoints,
+            authorId: currentUser.uid,
+            authorName: currentUser.displayName,
+            authorRole: currentUser.role === 'teacher' ? 'teacher' : 'student',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setLocalElements((prev) => ({ ...prev, [newStrokeId]: newStroke }));
+          upsertBoardElement(board.id, newStroke);
+        }
+        currentStrokePoints.current = [];
+      }
+    },
+    [
+      activePenColor,
+      activeStrokeWidth,
+      board.id,
+      currentUser.displayName,
+      currentUser.role,
+      currentUser.uid,
+      isDraggingElement,
+      isPanning,
+      localElements,
+      selectedElementId,
+    ]
+  );
+
+  // Global pointer up listener for safe dragging release
+  useEffect(() => {
+    if (!isDraggingElement) return;
+
+    const handleGlobalPointerUp = () => {
+      handlePointerUp();
+    };
+
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+    };
+  }, [handlePointerUp, isDraggingElement]);
 
   // Drag start on single element
-  const handleElementDragStart = (e: React.PointerEvent, elem: BoardElement) => {
-    e.stopPropagation();
-    if (!canEdit) return;
+  const handleElementDragStart = useCallback(
+    (e: React.PointerEvent, elem: BoardElement) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.board-interactive-control')) return;
 
-    if (activeTool === 'eraser') {
-      removeBoardElement(board.id, elem.id);
-      return;
-    }
+      e.stopPropagation();
+      if (!canEdit) return;
 
-    setSelectedElementId(elem.id);
-    setIsDraggingElement(true);
-    dragStartPos.current = {
-      mouseX: e.clientX,
-      mouseY: e.clientY,
-      elemX: elem.x,
-      elemY: elem.y,
-    };
-  };
+      if (activeTool === 'eraser') {
+        removeBoardElement(board.id, elem.id);
+        setLocalElements((prev) => {
+          const next = { ...prev };
+          delete next[elem.id];
+          return next;
+        });
+        return;
+      }
+
+      setSelectedElementId(elem.id);
+      setIsDraggingElement(true);
+      activeDragIdRef.current = elem.id;
+      dragStartPos.current = {
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        elemX: elem.x,
+        elemY: elem.y,
+      };
+    },
+    [activeTool, board.id, canEdit]
+  );
 
   // Delete selected item
-  const handleDeleteSelected = () => {
-    if (!selectedElementId || !canEdit) return;
-    removeBoardElement(board.id, selectedElementId);
-    setSelectedElementId(null);
-  };
+  const handleDeleteSelected = useCallback(
+    (idToDelete?: string) => {
+      const id = idToDelete || selectedElementId;
+      if (!id || !canEdit) return;
+      removeBoardElement(board.id, id);
+      setLocalElements((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (selectedElementId === id) {
+        setSelectedElementId(null);
+      }
+    },
+    [board.id, canEdit, selectedElementId]
+  );
 
   // Change color of selected sticky note
-  const handleColorChangeSelected = (color: string) => {
-    if (!selectedElementId || !canEdit) return;
-    const elem = board.elements?.[selectedElementId];
-    if (elem) {
+  const handleColorChangeSelected = useCallback(
+    (color: string, elemId?: string) => {
+      const id = elemId || selectedElementId;
+      if (!id || !canEdit) return;
+      const elem = localElements[id];
+      if (elem) {
+        const updated = {
+          ...elem,
+          color,
+          updatedAt: new Date().toISOString(),
+        };
+        setLocalElements((prev) => ({
+          ...prev,
+          [id]: updated,
+        }));
+        upsertBoardElement(board.id, updated);
+      }
+    },
+    [board.id, canEdit, localElements, selectedElementId]
+  );
+
+  // Handle text edit from child elements (instant local + debounced remote sync)
+  const handleTextChange = useCallback(
+    (elem: BoardElement, text: string) => {
+      setLocalElements((prev) => {
+        const cur = prev[elem.id];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [elem.id]: {
+            ...cur,
+            text,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      });
+
       upsertBoardElement(board.id, {
         ...elem,
-        color,
+        text,
         updatedAt: new Date().toISOString(),
       });
+    },
+    [board.id]
+  );
+
+  // Track active focus on text input to prevent remote overrides
+  const handleFocusChange = useCallback((elemId: string, isFocused: boolean) => {
+    if (isFocused) {
+      activeFocusedElementIdRef.current = elemId;
+    } else {
+      if (activeFocusedElementIdRef.current === elemId) {
+        activeFocusedElementIdRef.current = null;
+      }
     }
-  };
+  }, []);
 
   // Copy join code
   const handleCopyCode = () => {
@@ -552,10 +975,10 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
 
       ctx.font = '16px "Plus Jakarta Sans", sans-serif';
       ctx.fillStyle = '#64748B';
-      ctx.fillText(`Papan Ide Kolaborasi • Kode: ${board.code} • Dibuat oleh: ${board.creatorName}`, 60, 90);
+      ctx.fillText(`Ruang Kolaborasi • Kode: ${board.code} • Dibuat oleh: ${board.creatorName}`, 60, 90);
 
       // Render elements
-      const elements = Object.values(board.elements || {});
+      const elements = Object.values(localElements);
 
       // 1. Render drawings first
       elements.forEach((elem) => {
@@ -682,7 +1105,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
 
       // Download triggered
       const link = document.createElement('a');
-      link.download = `Papan_Ide_${board.code}_${board.title.replace(/\s+/g, '_')}.png`;
+      link.download = `Ruang_Kolaborasi_${board.code}_${board.title.replace(/\s+/g, '_')}.png`;
       link.href = exportCanvas.toDataURL('image/png');
       link.click();
     } catch (err) {
@@ -697,7 +1120,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
   );
 
   return (
-    <div className="relative w-full h-full min-h-screen flex flex-col bg-slate-100 overflow-hidden select-none">
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-100 overflow-hidden select-none">
       {/* Top Navbar */}
       <div className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between z-20 shadow-xs">
         {/* Left: Back & Title */}
@@ -723,7 +1146,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 hidden sm:block">
-              Papan Kolaborasi • Dibuat oleh {board.creatorName}
+              Ruang Kolaborasi • Dibuat oleh {board.creatorName}
             </p>
           </div>
         </div>
@@ -857,7 +1280,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
           />
 
           {/* Layer 2: Interactive SVG and DOM Elements (Shapes, Sticky Notes, Text) */}
-          {Object.values(board.elements || {}).map((elem) => {
+          {Object.values(localElements).map((elem) => {
             if (elem.type === 'drawing') return null; // rendered on canvas
 
             const isSelected = selectedElementId === elem.id;
@@ -877,6 +1300,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
                     width: `${elem.width}px`,
                     height: `${elem.height}px`,
                     zIndex: elem.zIndex || 5,
+                    touchAction: 'none',
                   }}
                 >
                   {elem.shapeType === 'rectangle' && (
@@ -925,7 +1349,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteSelected();
+                        handleDeleteSelected(elem.id);
                       }}
                       className="board-interactive-control absolute -top-3 -right-3 p-1.5 bg-rose-600 text-white rounded-full shadow-md hover:bg-rose-700 cursor-pointer"
                       title="Hapus Bentuk"
@@ -940,130 +1364,34 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
             // Render Text Box
             if (elem.type === 'text') {
               return (
-                <div
+                <TextBoxItem
                   key={elem.id}
-                  onPointerDown={(e) => handleElementDragStart(e, elem)}
-                  className={`absolute group cursor-move p-2 rounded-lg ${
-                    isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50/20' : ''
-                  }`}
-                  style={{
-                    left: `${elem.x}px`,
-                    top: `${elem.y}px`,
-                    width: `${elem.width}px`,
-                    zIndex: elem.zIndex || 10,
-                  }}
-                >
-                  <input
-                    type="text"
-                    disabled={!canEdit}
-                    value={elem.text || ''}
-                    onChange={(e) => {
-                      upsertBoardElement(board.id, {
-                        ...elem,
-                        text: e.target.value,
-                        updatedAt: new Date().toISOString(),
-                      });
-                    }}
-                    className="board-interactive-control w-full bg-transparent font-bold tracking-tight text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-hidden"
-                    style={{ fontSize: `${elem.fontSize || 18}px` }}
-                  />
-                  {isSelected && canEdit && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteSelected();
-                      }}
-                      className="board-interactive-control absolute -top-3 -right-3 p-1.5 bg-rose-600 text-white rounded-full shadow-md hover:bg-rose-700 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+                  elem={elem}
+                  isSelected={isSelected}
+                  canEdit={canEdit}
+                  onDragStart={handleElementDragStart}
+                  onDelete={() => handleDeleteSelected(elem.id)}
+                  onTextChange={handleTextChange}
+                  onFocusChange={handleFocusChange}
+                />
               );
             }
 
             // Render Sticky Note
             return (
-              <div
+              <StickyNoteItem
                 key={elem.id}
-                onPointerDown={(e) => handleElementDragStart(e, elem)}
-                className={`absolute group cursor-move rounded-2xl p-3 sm:p-4 shadow-md transition-all flex flex-col justify-between ${
-                  isSelected ? 'ring-3 ring-indigo-500 ring-offset-2 scale-[1.02] shadow-xl' : 'hover:shadow-lg'
-                }`}
-                style={{
-                  left: `${elem.x}px`,
-                  top: `${elem.y}px`,
-                  width: `${elem.width}px`,
-                  height: `${elem.height}px`,
-                  backgroundColor: elem.color,
-                  zIndex: elem.zIndex || 15,
-                }}
-              >
-                {/* Author Header & Delete Button */}
-                <div className="flex items-center justify-between pb-1.5 border-b border-black/10">
-                  <div className="flex items-center gap-1.5 overflow-hidden">
-                    <span className="text-[11px] font-bold text-slate-800/80 truncate">
-                      ✍️ {elem.authorName}
-                    </span>
-                    {elem.authorRole === 'teacher' && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-indigo-600 text-white">
-                        Guru
-                      </span>
-                    )}
-                  </div>
-
-                  {canEdit && (elem.authorId === currentUser.uid || isTeacher) && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeBoardElement(board.id, elem.id);
-                      }}
-                      className="board-interactive-control p-1 text-slate-600 hover:text-rose-600 hover:bg-black/5 rounded-md cursor-pointer transition-colors"
-                      title="Hapus Sticky Note"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Sticky Note Editable Textarea */}
-                <textarea
-                  disabled={!canEdit}
-                  placeholder="Ketik idemu di sini..."
-                  value={elem.text || ''}
-                  onChange={(e) => {
-                    upsertBoardElement(board.id, {
-                      ...elem,
-                      text: e.target.value,
-                      updatedAt: new Date().toISOString(),
-                    });
-                  }}
-                  className="board-interactive-control flex-1 w-full bg-transparent resize-none text-slate-900 font-medium text-xs sm:text-sm leading-relaxed p-1 focus:outline-hidden placeholder:text-black/30"
-                />
-
-                {/* Color quick-switch bar on selection */}
-                {isSelected && canEdit && (
-                  <div className="board-interactive-control flex items-center justify-center gap-1 pt-1 border-t border-black/10">
-                    {STICKY_COLORS.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleColorChangeSelected(c.bg);
-                        }}
-                        className={`w-4 h-4 rounded-full border border-black/20 transition-transform ${
-                          elem.color === c.bg ? 'scale-125 ring-2 ring-black/30' : 'hover:scale-110'
-                        }`}
-                        style={{ backgroundColor: c.bg }}
-                        title={c.name}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+                elem={elem}
+                isSelected={isSelected}
+                canEdit={canEdit}
+                isTeacher={isTeacher}
+                currentUserId={currentUser.uid}
+                onDragStart={handleElementDragStart}
+                onDelete={handleDeleteSelected}
+                onColorChange={(color) => handleColorChangeSelected(color, elem.id)}
+                onTextChange={handleTextChange}
+                onFocusChange={handleFocusChange}
+              />
             );
           })}
 
@@ -1350,7 +1678,7 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-900">Kode Sesi Papan Ide</h3>
+              <h3 className="text-xl font-bold text-slate-900">Kode Sesi Ruang Kolaborasi</h3>
               <p className="text-sm text-slate-500">
                 Siswa dapat langsung bergabung dengan memasukkan kode berikut di perangkat mereka:
               </p>
@@ -1472,6 +1800,8 @@ export const CollabBoardCanvas: React.FC<CollabBoardCanvasProps> = ({
         isDanger={true}
         onConfirm={() => {
           clearAllBoardElements(board.id);
+          setLocalElements({});
+          setSelectedElementId(null);
           setShowClearConfirm(false);
         }}
         onCancel={() => setShowClearConfirm(false)}
