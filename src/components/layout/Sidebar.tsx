@@ -134,7 +134,11 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     <aside className="w-64 shrink-0 hidden lg:block border-r border-[#BFDBFE]/40 bg-white/95 min-h-[calc(100vh-4.5rem)] p-4">
       <div className="mb-4 px-3 py-2">
         <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#364FFF]/80">
-          {currentRole === 'teacher' ? 'Menu Guru / Pengajar' : 'Menu Belajar Siswa'}
+          {currentRole === 'admin'
+            ? 'Panel Administrator'
+            : currentRole === 'teacher'
+            ? 'Menu Guru / Pengajar'
+            : 'Menu Belajar Siswa'}
         </span>
       </div>
 

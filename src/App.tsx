@@ -100,6 +100,18 @@ const MainContent: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (currentRole === 'admin') {
+      switch (activeTab) {
+        case 'laporan':
+          return <TeacherReports />;
+        case 'audit':
+          return <TeacherAuditLogs />;
+        case 'beranda':
+        default:
+          return <AdminDashboard />;
+      }
+    }
+
     if (currentRole === 'student') {
       switch (activeTab) {
         case 'beranda':

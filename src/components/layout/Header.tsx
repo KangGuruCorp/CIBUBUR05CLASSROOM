@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({
                 referrerPolicy="no-referrer"
               />
               <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#364FFF]/15 to-[#8B20FF]/15 text-[#364FFF] border border-[#A66CFF]/30">
-                {currentClass?.name || 'KELAS 6E'}
+                {currentRole === 'admin' ? 'PANEL ADMIN' : (currentClass?.name || 'KELAS 6E')}
               </span>
             </div>
           </div>
