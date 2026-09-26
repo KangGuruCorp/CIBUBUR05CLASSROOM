@@ -876,7 +876,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
       {/* Main Content Area: Left (Camera + Question) & Right (Student List) */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Column: Camera on top, Question displayed below */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden">
           {/* Camera Preview with AR Overlay */}
           <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden min-h-[220px]">
         {/* Hidden video element supplying frames */}
@@ -1084,7 +1084,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         </div>
 
         {/* Question Displayed Directly Below Camera */}
-        <div className="shrink-0 bg-slate-900 border-t border-slate-800 p-3.5 sm:p-4 space-y-2.5 max-h-[46vh] overflow-y-auto shadow-2xl">
+        <div className="shrink-0 lg:w-[40%] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 lg:p-6 space-y-2.5 max-h-[46vh] lg:max-h-full overflow-y-auto shadow-2xl flex flex-col">
           {/* Header Row: Question Prompt & Nav/Action Controls */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -1368,3 +1368,4 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+
