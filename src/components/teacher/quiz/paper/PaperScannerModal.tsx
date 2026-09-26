@@ -1346,7 +1346,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
               <RichQuestionPrompt text={activeQuestion.prompt} fallbackImageUrl={activeQuestion.imageUrl} theme="dark" />
             </div>
 
-            <div className={grid gap-3 mt-6 }>
+            <div className={`grid gap-3 mt-6 ${availableLetters.length === 2 ? "grid-cols-2 max-w-2xl" : "grid-cols-1 sm:grid-cols-2"}`}>
               {availableLetters.map((letter) => {
                 const optIdx = (['A', 'B', 'C', 'D'] as const).indexOf(letter);
                 const optionText = activeQuestion.options?.[optIdx] || '';
@@ -1366,6 +1366,10 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         </div>
       )}
     </div>
+    </div>
   );
 };
+
+
+
 
