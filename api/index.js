@@ -52,17 +52,17 @@ async function getFullDb() {
     try {
       const result = await pool.query("SELECT data FROM gamiclass_store WHERE id = 'main_db'");
       if (result.rows.length > 0) return result.rows[0].data;
-      return {};
+      try { const initialData = await fs.readFile(DB_FILE, 'utf-8'); const parsed = JSON.parse(initialData); await saveFullDb(parsed); return parsed; } catch (e) { return {}; }
     } catch (err) {
       console.error('Postgres Read Error:', err);
-      return {};
+      try { const initialData = await fs.readFile(DB_FILE, 'utf-8'); const parsed = JSON.parse(initialData); await saveFullDb(parsed); return parsed; } catch (e) { return {}; }
     }
   } else {
     try {
       const data = await fs.readFile(DB_FILE, 'utf-8');
       return JSON.parse(data);
     } catch {
-      return {};
+      try { const initialData = await fs.readFile(DB_FILE, 'utf-8'); const parsed = JSON.parse(initialData); await saveFullDb(parsed); return parsed; } catch (e) { return {}; }
     }
   }
 }
