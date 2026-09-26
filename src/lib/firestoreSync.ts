@@ -119,7 +119,7 @@ async function fetchDeltaSync() {
 if (typeof window !== 'undefined') {
   initOfflineCache().then(() => {
     fetchDeltaSync();
-    pollingInterval = setInterval(fetchDeltaSync, 4000); // Smart polling every 4s
+    pollingInterval = setInterval(fetchDeltaSync, 1000); // Smart polling every 1s
   });
 }
 
