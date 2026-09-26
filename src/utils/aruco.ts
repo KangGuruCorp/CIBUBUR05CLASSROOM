@@ -85,7 +85,7 @@ export function getArucoSvgString(markerId: number, size: string = '160px'): str
  * student metadata, and anti-cheating subtle A, B, C, D labels.
  */
 export function generateStudentCardHtml(student: PaperCardStudentInfo, themeIndex: number = 0): string {
-  const markerSvg = getArucoSvgString(student.markerId, '170px');
+  const markerSvg = getArucoSvgString(student.markerId, '240px');
   
   const PALETTES = [
     { primary: '#4f46e5', border: '#6366f1', bgBadge: '#eef2ff', textBadge: '#3730a3', accent: '#818cf8', gradient: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' },
@@ -130,7 +130,7 @@ export function generateStudentCardHtml(student: PaperCardStudentInfo, themeInde
       </div>
 
       <!-- Marker with Subtle Anti-Cheating A, B, C, D Labels (NO word sisi) -->
-      <div style="position: relative; width: 280px; height: 280px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+      <div style="position: relative; width: 320px; height: 320px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
         
         <!-- TOP (A) -->
         <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 1px;">
