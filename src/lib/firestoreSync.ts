@@ -120,10 +120,28 @@ function initSseConnection() {
             sessions[idx] = session;
             collectionCache.set(COLLECTIONS.PAPER_SESSIONS, [...sessions]);
             notifyListeners(COLLECTIONS.PAPER_SESSIONS);
+          } else {
+            const newSession = {
+              id: payload.sessionId,
+              answersByQuestion: {
+                [payload.questionIndex]: {
+                  [payload.answer.studentId]: payload.answer,
+                },
+              },
+            };
+            sessions.push(newSession);
+            collectionCache.set(COLLECTIONS.PAPER_SESSIONS, [...sessions]);
+            notifyListeners(COLLECTIONS.PAPER_SESSIONS);
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('paper_answer', { detail: payload }));
           }
         } else if (payload.type === 'paper_control') {
           if (payload.session) {
             updateDocInCache(COLLECTIONS.PAPER_SESSIONS, payload.sessionId, payload.session);
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('paper_control', { detail: payload }));
           }
         } else if (payload.type === 'bulk') {
           fetchDeltaSync();

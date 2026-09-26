@@ -75,6 +75,7 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
   const [isLocked, setIsLocked] = useState(false);
   const [showLiveStats, setShowLiveStats] = useState(false);
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  const [recentlyChangedStudentId, setRecentlyChangedStudentId] = useState<string | null>(null);
   const [answersByQuestion, setAnswersByQuestion] = useState<
     Record<number, Record<string, PaperModeAnswer>>
   >({});
@@ -116,7 +117,52 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
 
     loadSession();
     const interval = setInterval(loadSession, 1200);
-    return () => clearInterval(interval);
+
+    // Instant Real-time SSE Events for Paper Mode
+    const handlePaperAnswer = (e: any) => {
+      const payload = e.detail;
+      if (payload && payload.sessionId === sessionId) {
+        setAnswersByQuestion((prev) => {
+          const qAnswers = { ...(prev[payload.questionIndex] || {}) };
+          qAnswers[payload.answer.studentId] = payload.answer;
+          return {
+            ...prev,
+            [payload.questionIndex]: qAnswers,
+          };
+        });
+
+        // Highlight updated student in roster
+        if (payload.answer?.studentId) {
+          setRecentlyChangedStudentId(payload.answer.studentId);
+          setTimeout(() => {
+            setRecentlyChangedStudentId((curr) =>
+              curr === payload.answer.studentId ? null : curr
+            );
+          }, 3000);
+        }
+      }
+    };
+
+    const handlePaperControl = (e: any) => {
+      const payload = e.detail;
+      if (payload && payload.sessionId === sessionId && payload.session) {
+        const s = payload.session;
+        if (s.currentQuestionIndex !== undefined) setCurrentQuestionIndex(s.currentQuestionIndex);
+        if (s.status !== undefined) setIsLocked(s.status === 'question_closed');
+        if (s.showLiveStats !== undefined) setShowLiveStats(Boolean(s.showLiveStats));
+        if (s.showCorrectAnswer !== undefined) setShowCorrectAnswer(Boolean(s.showCorrectAnswer));
+        if (s.answersByQuestion) setAnswersByQuestion(s.answersByQuestion);
+      }
+    };
+
+    window.addEventListener('paper_answer', handlePaperAnswer);
+    window.addEventListener('paper_control', handlePaperControl);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('paper_answer', handlePaperAnswer);
+      window.removeEventListener('paper_control', handlePaperControl);
+    };
   }, [isOpen, sessionId]);
 
   // Fullscreen toggle handler
@@ -172,11 +218,13 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
 
     if (nextReveal) {
       fireCelebrationConfetti();
+      setIsLocked(true); // Lock question so students cannot cheat by altering card after key is shown
     }
 
     await controlPaperSession(sessionId, {
       showCorrectAnswer: nextReveal,
       showLiveStats: nextReveal,
+      ...(nextReveal ? { status: 'question_closed' } : {}),
     });
   };
 
@@ -232,8 +280,17 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
           <div className="px-4 py-2 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center gap-3">
             <Users className="w-4 h-4 text-emerald-400" />
             <div className="text-right">
-              <div className="text-sm font-black text-white leading-none">
-                {answeredCount} / {classStudents.length}
+              <div className="text-sm font-black text-white leading-none flex items-center gap-1.5 justify-end">
+                <span>{answeredCount} / {classStudents.length}</span>
+                {isLocked ? (
+                  <span className="px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold">
+                    Terkunci
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold">
+                    Bisa Ubah
+                  </span>
+                )}
               </div>
               <div className="text-[10px] font-bold text-slate-400">Siswa Menjawab</div>
             </div>
@@ -427,13 +484,27 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
 
         {/* Right Sidebar: Live Student Roster Grid (30% width) */}
         <div className="w-96 border-l border-slate-800 bg-slate-900/60 flex flex-col shrink-0">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-              Daftar Siswa ({classStudents.length})
-            </span>
-            <span className="text-[11px] font-bold text-emerald-400">
-              ● Berkedip Hijau = Jawaban Terekam
-            </span>
+          <div className="p-4 border-b border-slate-800 flex flex-col gap-1.5 bg-slate-900">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-300">
+                Daftar Siswa ({answeredCount}/{classStudents.length})
+              </span>
+              {isLocked ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Soal Terkunci
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Bisa Ubah Jawaban
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-400 leading-tight">
+              {isLocked
+                ? '🔒 Soal telah dikunci. Jawaban tidak dapat diubah lagi.'
+                : '● Bertanda Hijau = Terekam. Murid bebas memutar kartu untuk merubah jawaban sampai guru menyelesaikan soal.'}
+            </p>
           </div>
 
           {/* Student Grid */}
@@ -441,22 +512,31 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
             {classStudents.map((st, index) => {
               const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : index + 1;
               const hasAnswered = Boolean(currentAnswers[st.uid]);
+              const isJustUpdated = recentlyChangedStudentId === st.uid;
 
               return (
                 <div
                   key={st.uid}
                   className={`p-3 rounded-2xl border transition-all duration-300 flex items-center gap-2.5 ${
-                    hasAnswered
+                    isJustUpdated
+                      ? 'bg-cyan-950/90 border-cyan-400 text-cyan-200 shadow-xl ring-4 ring-cyan-400/40 animate-pulse'
+                      : hasAnswered
                       ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200 shadow-md ring-2 ring-emerald-400/20'
                       : 'bg-slate-900/80 border-slate-800 text-slate-400'
                   }`}
                 >
                   <div
-                    className={`w-7 h-7 rounded-xl font-mono font-black text-xs flex items-center justify-center shrink-0 ${
-                      hasAnswered ? 'bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-400'
+                    className={`w-7 h-7 rounded-xl font-mono font-black text-xs flex items-center justify-center shrink-0 transition-colors ${
+                      isJustUpdated
+                        ? 'bg-cyan-400 text-slate-950'
+                        : hasAnswered
+                        ? 'bg-emerald-400 text-slate-950'
+                        : 'bg-slate-800 text-slate-400'
                     }`}
                   >
-                    {hasAnswered ? (
+                    {isJustUpdated ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : hasAnswered ? (
                       <CheckCircle2 className="w-4 h-4" />
                     ) : (
                       st.absentNumber ?? index + 1
@@ -467,8 +547,14 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
                       {st.displayName}
                     </p>
                     <p className="text-[10px] text-slate-400 truncate">
-                      {hasAnswered ? (
-                        <span className="text-emerald-400 font-extrabold">Terjawab</span>
+                      {isJustUpdated ? (
+                        <span className="text-cyan-300 font-black flex items-center gap-0.5">
+                          🔄 Diperbarui
+                        </span>
+                      ) : hasAnswered ? (
+                        <span className="text-emerald-400 font-extrabold flex items-center gap-0.5">
+                          ✓ Terekam
+                        </span>
                       ) : (
                         `#Marker ${markerId}`
                       )}

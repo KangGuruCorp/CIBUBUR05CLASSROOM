@@ -59,7 +59,13 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   const [photoToast, setPhotoToast] = useState<string | null>(null);
 
   const [recentDetections, setRecentDetections] = useState<
-    { studentName: string; option: PaperOption; timestamp: number }[]
+    {
+      studentName: string;
+      option: PaperOption;
+      prevOption?: PaperOption;
+      isChange?: boolean;
+      timestamp: number;
+    }[]
   >([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -108,9 +114,11 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
   // Cache answered students for current question
   const answeredStudentsRef = useRef<Record<string, PaperOption>>({});
+  // Candidate rotation debouncer to avoid capturing intermediate rotations
+  const candidateChangesRef = useRef<Record<string, { option: PaperOption; count: number }>>({});
   const [answeredCount, setAnsweredCount] = useState(0);
 
-  // Play subtle beep sound on detection
+  // Play subtle beep sound on new detection
   const playBeep = () => {
     if (!soundEnabled) return;
     try {
@@ -128,6 +136,29 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.12);
+    } catch {}
+  };
+
+  // Play distinctive rising chime when student changes their answer
+  const playChangeSound = () => {
+    if (!soundEnabled) return;
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(650, now);
+      osc.frequency.exponentialRampToValueAtTime(1050, now + 0.18);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
     } catch {}
   };
 
@@ -159,8 +190,46 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
     loadSession();
     const interval = setInterval(loadSession, 2000);
-    return () => clearInterval(interval);
-  }, [isOpen, sessionId]);
+
+    // Instant SSE Events
+    const handlePaperControl = (e: any) => {
+      const payload = e.detail;
+      if (payload && payload.sessionId === sessionId && payload.session) {
+        const s = payload.session;
+        if (s.currentQuestionIndex !== undefined) setCurrentQuestionIndex(s.currentQuestionIndex);
+        if (s.status !== undefined) setIsLocked(s.status === 'question_closed');
+        if (s.showCorrectAnswer !== undefined) setShowCorrectAnswer(Boolean(s.showCorrectAnswer));
+        if (s.answersByQuestion) {
+          const qAnswers = s.answersByQuestion[s.currentQuestionIndex ?? currentQuestionIndex] || {};
+          const map: Record<string, PaperOption> = {};
+          Object.values(qAnswers).forEach((a: any) => {
+            map[a.studentId] = a.selectedOption;
+          });
+          answeredStudentsRef.current = map;
+          setAnsweredCount(Object.keys(map).length);
+        }
+      }
+    };
+
+    const handlePaperAnswer = (e: any) => {
+      const payload = e.detail;
+      if (payload && payload.sessionId === sessionId && payload.questionIndex === currentQuestionIndex) {
+        if (payload.answer?.studentId && payload.answer?.selectedOption) {
+          answeredStudentsRef.current[payload.answer.studentId] = payload.answer.selectedOption;
+          setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+        }
+      }
+    };
+
+    window.addEventListener('paper_control', handlePaperControl);
+    window.addEventListener('paper_answer', handlePaperAnswer);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('paper_control', handlePaperControl);
+      window.removeEventListener('paper_answer', handlePaperAnswer);
+    };
+  }, [isOpen, sessionId, currentQuestionIndex]);
 
   // Start Camera Stream
   const startCamera = async () => {
@@ -283,9 +352,10 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                 const markerId = marker.id;
                 const { option } = getMarkerOrientation(marker.corners);
 
-                const student = studentByMarkerId.get(markerId);
-                const studentName = student ? student.displayName : `Siswa #${markerId}`;
-                const studentId = student ? student.uid : `marker_${markerId}`;
+                // Check if this student recently changed their answer
+                const isRecentlyChanged = recentDetections.some(
+                  (d) => d.studentName === studentName && d.isChange && Date.now() - d.timestamp < 3500
+                );
 
                 // Draw bounding box
                 ctx.beginPath();
@@ -294,8 +364,8 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                   ctx.lineTo(marker.corners[i].x, marker.corners[i].y);
                 }
                 ctx.closePath();
-                ctx.lineWidth = 4;
-                ctx.strokeStyle = '#10b981'; // Emerald 500
+                ctx.lineWidth = isRecentlyChanged ? 5 : 4;
+                ctx.strokeStyle = isRecentlyChanged ? '#22d3ee' : '#10b981'; // Cyan if changed, Emerald if normal
                 ctx.stroke();
 
                 // Draw Top Edge indicator (the chosen side)
@@ -305,7 +375,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                 ctx.moveTo(c0.x, c0.y);
                 ctx.lineTo(c1.x, c1.y);
                 ctx.lineWidth = 6;
-                ctx.strokeStyle = '#3b82f6'; // Blue for side A
+                ctx.strokeStyle = isRecentlyChanged ? '#38bdf8' : '#3b82f6';
                 ctx.stroke();
 
                 // Draw AR label pill
@@ -322,12 +392,14 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                     marker.corners[3].y) /
                   4;
 
-                const labelText = `${studentName} ➔ [ ${option} ]`;
+                const labelText = isRecentlyChanged
+                  ? `🔄 ${studentName} ➔ [ ${option} ] (Diperbarui)`
+                  : `${studentName} ➔ [ ${option} ]`;
 
                 ctx.font = 'bold 16px ui-sans-serif, system-ui';
                 const textWidth = ctx.measureText(labelText).width;
 
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                ctx.fillStyle = isRecentlyChanged ? 'rgba(8, 51, 68, 0.92)' : 'rgba(15, 23, 42, 0.85)';
                 ctx.beginPath();
                 ctx.roundRect(
                   centerX - textWidth / 2 - 12,
@@ -337,11 +409,11 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                   8
                 );
                 ctx.fill();
-                ctx.lineWidth = 1.5;
-                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = isRecentlyChanged ? 2.5 : 1.5;
+                ctx.strokeStyle = isRecentlyChanged ? '#22d3ee' : '#10b981';
                 ctx.stroke();
 
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = isRecentlyChanged ? '#67e8f9' : '#ffffff';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(labelText, centerX, centerY - 17);
@@ -350,32 +422,68 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                 if (!isLocked) {
                   const prevOption = answeredStudentsRef.current[studentId];
                   if (prevOption !== option) {
-                    answeredStudentsRef.current[studentId] = option;
-                    setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+                    const isChange = prevOption !== undefined;
+                    let shouldCommit = false;
 
-                    // Submit to server
-                    const answerPayload: PaperModeAnswer = {
-                      studentId,
-                      markerId,
-                      studentName,
-                      selectedOption: option,
-                      timestamp: Date.now(),
-                    };
-                    submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
-
-                    // Trigger sound & haptic
-                    playBeep();
-                    if ('vibrate' in navigator) {
-                      try {
-                        navigator.vibrate(40);
-                      } catch {}
+                    // If student is changing an already recorded answer, require 2 consecutive frames (~110ms)
+                    // so rotating the card in the air doesn't trigger an accidental intermediate side
+                    if (isChange) {
+                      const cand = candidateChangesRef.current[studentId];
+                      if (cand && cand.option === option) {
+                        cand.count += 1;
+                        if (cand.count >= 2) {
+                          shouldCommit = true;
+                          delete candidateChangesRef.current[studentId];
+                        }
+                      } else {
+                        candidateChangesRef.current[studentId] = { option, count: 1 };
+                      }
+                    } else {
+                      shouldCommit = true;
                     }
 
-                    // Add to recent detections feed
-                    setRecentDetections((prev) => [
-                      { studentName, option, timestamp: Date.now() },
-                      ...prev.slice(0, 4),
-                    ]);
+                    if (shouldCommit) {
+                      answeredStudentsRef.current[studentId] = option;
+                      setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+
+                      // Submit to server
+                      const answerPayload: PaperModeAnswer = {
+                        studentId,
+                        markerId,
+                        studentName,
+                        selectedOption: option,
+                        timestamp: Date.now(),
+                      };
+                      submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
+
+                      // Trigger sound & haptic
+                      if (isChange) {
+                        playChangeSound();
+                        if ('vibrate' in navigator) {
+                          try {
+                            navigator.vibrate([45, 50, 45]);
+                          } catch {}
+                        }
+                      } else {
+                        playBeep();
+                        if ('vibrate' in navigator) {
+                          try {
+                            navigator.vibrate(40);
+                          } catch {}
+                        }
+                      }
+
+                      // Add to recent detections feed
+                      setRecentDetections((prev) => [
+                        { studentName, option, prevOption, isChange, timestamp: Date.now() },
+                        ...prev.slice(0, 4),
+                      ]);
+                    }
+                  } else {
+                    // Option is steady, clear any pending change candidate
+                    if (candidateChangesRef.current[studentId]) {
+                      delete candidateChangesRef.current[studentId];
+                    }
                   }
                 }
               });
@@ -430,12 +538,18 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
           }
 
           let detectedCount = 0;
+          let changedCount = 0;
           markers.forEach((marker: any) => {
             const markerId = marker.id;
             const { option } = getMarkerOrientation(marker.corners);
             const student = studentByMarkerId.get(markerId);
             const studentName = student ? student.displayName : `Siswa #${markerId}`;
             const studentId = student ? student.uid : `marker_${markerId}`;
+
+            const prevOption = answeredStudentsRef.current[studentId];
+            if (prevOption && prevOption !== option) {
+              changedCount++;
+            }
 
             answeredStudentsRef.current[studentId] = option;
             const answerPayload: PaperModeAnswer = {
@@ -450,8 +564,16 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
           });
 
           setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
-          playBeep();
-          setPhotoToast(`🎉 Berhasil memindai ${detectedCount} jawaban siswa dari foto!`);
+          if (changedCount > 0) {
+            playChangeSound();
+          } else {
+            playBeep();
+          }
+          setPhotoToast(
+            changedCount > 0
+              ? `🎉 Berhasil memindai ${detectedCount} kartu (${changedCount} jawaban siswa diperbarui)!`
+              : `🎉 Berhasil memindai ${detectedCount} jawaban siswa dari foto!`
+          );
           setTimeout(() => setPhotoToast(null), 5000);
         } catch (err: any) {
           setPhotoToast(`Gagal memproses foto: ${err.message}`);
@@ -617,6 +739,25 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
           className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none"
         />
 
+        {/* Floating Scanner Mode Status Pill */}
+        <div className="z-20 absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
+          {isLocked ? (
+            <div className="px-3.5 py-1.5 rounded-full bg-rose-950/90 border border-rose-500/50 backdrop-blur-md flex items-center gap-2 shadow-xl">
+              <Lock className="w-3.5 h-3.5 text-rose-400" />
+              <span className="text-[11px] font-black text-rose-200">
+                Soal Terkunci — Jawaban Tidak Dapat Diubah
+              </span>
+            </div>
+          ) : (
+            <div className="px-3.5 py-1.5 rounded-full bg-slate-950/85 border border-emerald-500/50 backdrop-blur-md flex items-center gap-2 shadow-xl">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-[11px] font-black text-emerald-300">
+                Pemindaian Aktif — Siswa Bebas Merubah Jawaban
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Processing Photo Indicator */}
         {isProcessingPhoto && (
           <div className="z-40 absolute inset-0 bg-black/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-3">
@@ -737,17 +878,39 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
         {/* Live Scan Notification Floater */}
         {recentDetections.length > 0 && (
-          <div className="absolute top-4 left-4 z-20 space-y-1.5 pointer-events-none max-w-xs">
-            {recentDetections.slice(0, 3).map((det, idx) => (
+          <div className="absolute top-12 left-4 z-20 space-y-1.5 pointer-events-none max-w-xs">
+            {recentDetections.slice(0, 4).map((det, idx) => (
               <div
-                key={`${det.studentName}_${det.timestamp}`}
-                className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-emerald-400/50 backdrop-blur-md text-white text-xs font-bold flex items-center gap-2 shadow-lg animate-fade-in"
+                key={`${det.studentName}_${det.timestamp}_${idx}`}
+                className={`px-3 py-1.5 rounded-xl backdrop-blur-md text-white text-xs font-bold flex items-center gap-2 shadow-lg animate-fade-in ${
+                  det.isChange
+                    ? 'bg-cyan-950/90 border border-cyan-400 text-cyan-200'
+                    : 'bg-slate-950/80 border border-emerald-400/50 text-white'
+                }`}
               >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                {det.isChange ? (
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-300 animate-spin shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                )}
                 <span className="truncate">{det.studentName}</span>
-                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-slate-950 font-black text-[10px]">
+                {det.isChange && det.prevOption && (
+                  <span className="text-[10px] text-cyan-300 font-mono">
+                    {det.prevOption} ➔
+                  </span>
+                )}
+                <span
+                  className={`px-1.5 py-0.5 rounded-md font-black text-[10px] ${
+                    det.isChange ? 'bg-cyan-400 text-slate-950' : 'bg-emerald-500 text-slate-950'
+                  }`}
+                >
                   {det.option}
                 </span>
+                {det.isChange && (
+                  <span className="text-[9px] text-cyan-300 font-extrabold uppercase tracking-wider">
+                    Ubah
+                  </span>
+                )}
               </div>
             ))}
           </div>
