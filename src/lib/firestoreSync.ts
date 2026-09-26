@@ -201,6 +201,19 @@ export function setFirestoreQuotaExceeded(val: boolean) {}
 export function isQuotaError(err: any) { return false; }
 export function cleanForFirestore(obj: any) { return obj; }
 
+export async function submitPaperAnswersBatch(sessionId: string, questionIndex: number, answers: any[]) {
+  try {
+    const res = await fetch(`/api/paper-sessions/${encodeURIComponent(sessionId)}/answers-batch`,  {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionIndex, answers }),
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
 export async function submitPaperAnswer(sessionId: string, questionIndex: number, answer: any) {
   try {
     const res = await fetch(`/api/paper-sessions/${encodeURIComponent(sessionId)}/answer`, {
@@ -228,4 +241,7 @@ export async function controlPaperSession(sessionId: string, updates: any) {
 }
 
 export async function seedFirestoreIfEmpty() { return true; }
+
+
+
 

@@ -383,6 +383,28 @@ app.put('/api/boards/:id/participants/:userId', async (req, res) => {
 });
 
 // ─── Paper Mode ──────────────────────────────
+app.post('/api/paper-sessions/:id/answers-batch', async (req, res) => {
+  const { id } = req.params;
+  const { questionIndex, answers } = req.body;
+  if (!Array.isArray(answers) || answers.length === 0) return res.json({ success: true });
+  
+  await modifyDb((db) => {
+    if (!db.paperSessions) db.paperSessions = [];
+    let session = db.paperSessions.find(s => s && s.id === id);
+    if (!session) {
+      session = { id, currentQuestionIndex: questionIndex, status: 'active', answersByQuestion: {} };
+      db.paperSessions.push(session);
+    }
+    session.answersByQuestion = session.answersByQuestion || {};
+    session.answersByQuestion[questionIndex] = session.answersByQuestion[questionIndex] || {};
+    for (const ans of answers) {
+      session.answersByQuestion[questionIndex][ans.studentId] = { ...ans, timestamp: Date.now() };
+    }
+    return db;
+  });
+  res.json({ success: true, count: answers.length });
+});
+
 app.post('/api/paper-sessions/:id/answer', async (req, res) => {
   const { id } = req.params;
   const { questionIndex, answer } = req.body;
@@ -514,5 +536,6 @@ app.get('/api/cleanup', async (req, res) => {
 });
 
 export default app;
+
 
 

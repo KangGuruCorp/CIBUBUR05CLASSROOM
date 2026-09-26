@@ -29,7 +29,7 @@ import { Quiz, User } from '../../../../types';
 import { PaperModeAnswer, PaperModeSession, PaperOption } from '../../../../types/paperMode';
 import { useApp } from '../../../../context/AppContext';
 import { getMarkerOrientation } from '../../../../utils/aruco';
-import { submitPaperAnswer, controlPaperSession } from '../../../../lib/firestoreSync';
+import { submitPaperAnswer, submitPaperAnswersBatch, controlPaperSession } from '../../../../lib/firestoreSync';
 import { LatexRenderer } from '../../../../utils/latex';
 import { RichQuestionPrompt } from '../../../common/RichQuestionPrompt';
 
@@ -368,7 +368,8 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
             // Draw detection AR overlays
             if (markers && markers.length > 0) {
-              const newDetectionsInBatch: { studentName: string; option: PaperOption; prevOption?: PaperOption; isChange: boolean }[] = [];
+                            const newDetectionsInBatch: { studentName: string; option: PaperOption; prevOption?: PaperOption; isChange: boolean }[] = [];
+              const batchAnswers: PaperModeAnswer[] = [];
               let hasChangeInBatch = false;
               let hasNewInBatch = false;
               let validCount = 0;
@@ -494,7 +495,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                       answeredStudentsRef.current[studentId] = option;
                       answeredStudentsRef.current[`marker_${markerId}`] = option;
 
-                      // Submit to server
+                                            // Add to batch
                       const answerPayload: PaperModeAnswer = {
                         studentId,
                         markerId,
@@ -502,20 +503,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                         selectedOption: option,
                         timestamp: Date.now(),
                       };
-                      submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
-
-                      // Instant local window event for zero-latency sync with presenter in same window
-                      if (typeof window !== 'undefined') {
-                        window.dispatchEvent(
-                          new CustomEvent('paper_answer', {
-                            detail: {
-                              sessionId,
-                              questionIndex: currentQuestionIndex,
-                              answer: answerPayload,
-                            },
-                          })
-                        );
-                      }
+                      batchAnswers.push(answerPayload);
 
                       newDetectionsInBatch.push({
                         studentName,
@@ -533,7 +521,19 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                     }
                   }
                 }
-              });
+              });              // Process collected batch answers
+              if (batchAnswers.length > 0) {
+                submitPaperAnswersBatch(sessionId, currentQuestionIndex, batchAnswers);
+                batchAnswers.forEach(ans => {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                      new CustomEvent('paper_answer', {
+                        detail: { sessionId, questionIndex: currentQuestionIndex, answer: ans },
+                      })
+                    );
+                  }
+                });
+              }
 
               setVisibleMarkersCount(validCount);
 
@@ -616,8 +616,10 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             return;
           }
 
-          let detectedCount = 0;
+                    let detectedCount = 0;
           let changedCount = 0;
+          const batchAnswers: PaperModeAnswer[] = [];
+
           markers.forEach((marker: any) => {
             if (!marker || !marker.corners || marker.corners.length < 4) return;
             const markerId = marker.id;
@@ -636,7 +638,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             }
 
             answeredStudentsRef.current[studentId] = option;
-            answeredStudentsRef.current[`marker_${markerId}`] = option;
+            answeredStudentsRef.current[marker_] = option;
             const answerPayload: PaperModeAnswer = {
               studentId,
               markerId,
@@ -644,21 +646,22 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
               selectedOption: option,
               timestamp: Date.now(),
             };
-            submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
-
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(
-                new CustomEvent('paper_answer', {
-                  detail: {
-                    sessionId,
-                    questionIndex: currentQuestionIndex,
-                    answer: answerPayload,
-                  },
-                })
-              );
-            }
+            batchAnswers.push(answerPayload);
             detectedCount++;
           });
+
+          if (batchAnswers.length > 0) {
+            submitPaperAnswersBatch(sessionId, currentQuestionIndex, batchAnswers);
+            batchAnswers.forEach(ans => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(
+                  new CustomEvent('paper_answer', {
+                    detail: { sessionId, questionIndex: currentQuestionIndex, answer: ans },
+                  })
+                );
+              }
+            });
+          }
 
           setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
           if (changedCount > 0) {
@@ -1308,6 +1311,10 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+
+
+
+
 
 
 
