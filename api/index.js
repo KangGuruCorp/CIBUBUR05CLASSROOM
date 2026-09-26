@@ -464,5 +464,55 @@ app.get('/api/health', async (req, res) => {
   res.json({ status: 'OK', database: dbStatus, error: errorMsg, hasEnv: !!process.env.POSTGRES_URL || !!process.env.DATABASE_URL });
 });
 
+app.get('/api/cleanup', async (req, res) => {
+  // Hanya simpan data 30 hari terakhir
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const cutoffTime = Date.now() - THIRTY_DAYS_MS;
+  const cutoffIso = new Date(cutoffTime).toISOString();
+
+  let cleanedChat = 0;
+  let cleanedBoards = 0;
+
+  // 1. Bersihkan Pesan Chat & Notifikasi Lama dari main_db
+  await modifyDb((db) => {
+    if (Array.isArray(db.chatMessages)) {
+      const initialLength = db.chatMessages.length;
+      db.chatMessages = db.chatMessages.filter(msg => {
+        if (!msg.createdAt) return true;
+        return new Date(msg.createdAt).getTime() > cutoffTime;
+      });
+      cleanedChat = initialLength - db.chatMessages.length;
+    }
+    if (Array.isArray(db.notifications)) {
+      db.notifications = db.notifications.filter(n => {
+        if (!n.createdAt) return true;
+        return new Date(n.createdAt).getTime() > cutoffTime;
+      });
+    }
+    return db;
+  });
+
+  // 2. Bersihkan Papan Ide (Kolaborasi) yang sudah > 30 hari tidak disentuh
+  await modifyBoards((boards) => {
+    const initialLength = boards.length;
+    boards = boards.filter(b => {
+      const lastUpdated = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return lastUpdated > cutoffTime;
+    });
+    cleanedBoards = initialLength - boards.length;
+    return boards;
+  });
+
+  res.json({
+    success: true,
+    message: "Auto-cleanup berhasil dijalankan.",
+    deleted_items: {
+      old_chats: cleanedChat,
+      old_boards: cleanedBoards
+    }
+  });
+});
+
 export default app;
+
 
