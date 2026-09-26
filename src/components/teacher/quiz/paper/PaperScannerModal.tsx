@@ -876,7 +876,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
       {/* Main Content Area: Left (Camera + Question) & Right (Student List) */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Column: Camera on top, Question displayed below */}
-        <div className="flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Camera Preview with AR Overlay */}
           <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden min-h-[220px]">
         {/* Hidden video element supplying frames */}
@@ -1084,16 +1084,14 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         </div>
 
         {/* Question Displayed Directly Below Camera */}
-        <div className="shrink-0 lg:w-[40%] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 lg:p-6 space-y-2.5 max-h-[46vh] lg:max-h-full overflow-y-auto shadow-2xl flex flex-col">
+        <div className="shrink-0 bg-slate-900 border-t border-slate-800 p-3 sm:p-4 shadow-2xl">
           {/* Header Row: Question Prompt & Nav/Action Controls */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2.5 min-w-0 flex-1">
               <span className="px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-black text-xs shrink-0 border border-indigo-500/30 mt-0.5">
                 Soal #{currentQuestionIndex + 1}
               </span>
-              <div className="text-sm sm:text-base font-extrabold text-white leading-snug">
-                <RichQuestionPrompt text={activeQuestion.prompt} fallbackImageUrl={activeQuestion.imageUrl} theme="dark" />
-              </div>
+              <div className="text-[11px] sm:text-xs font-medium text-slate-400 leading-snug truncate mt-1">Soal disembunyikan. Klik "Lihat Soal" di atas.</div>
             </div>
 
             {/* Quick Action & Nav Buttons */}
@@ -1148,66 +1146,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             </div>
           </div>
 
-          {/* Options Grid */}
-          <div
-            className={`grid gap-2 ${
-              availableLetters.length === 2
-                ? 'grid-cols-2 max-w-xl'
-                : availableLetters.length === 3
-                ? 'grid-cols-3'
-                : 'grid-cols-2 sm:grid-cols-4'
-            }`}
-          >
-            {availableLetters.map((letter) => {
-              const optIdx = (['A', 'B', 'C', 'D'] as const).indexOf(letter);
-              const optionText = activeQuestion.options?.[optIdx] || '';
-              const isCorrectAnswerKey =
-                activeQuestion.correctOptionIndex !== undefined &&
-                activeQuestion.correctOptionIndex === optIdx;
-
-              const count = optionStats[letter] || 0;
-              const percent = answeredCount > 0 ? Math.round((count / answeredCount) * 100) : 0;
-
-              const isHighlightedCorrect = showCorrectAnswer && isCorrectAnswerKey;
-              const isDimmed = showCorrectAnswer && !isCorrectAnswerKey;
-
-              return (
-                <div
-                  key={letter}
-                  className={`p-2 rounded-xl border transition-all flex items-center gap-2 ${
-                    isHighlightedCorrect
-                      ? 'bg-emerald-950/80 border-emerald-400 ring-2 ring-emerald-400/30'
-                      : isDimmed
-                      ? 'bg-slate-900/40 border-slate-800/60 opacity-40'
-                      : 'bg-slate-800/80 border-slate-700/80'
-                  }`}
-                >
-                  <span
-                    className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 shadow-sm ${
-                      isHighlightedCorrect
-                        ? 'bg-emerald-400 text-slate-950'
-                        : isTrueFalse
-                        ? letter === 'A'
-                          ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-rose-500 text-white'
-                        : 'bg-indigo-600 text-white'
-                    }`}
-                  >
-                    {letter}
-                  </span>
-                  <div className="flex-1 min-w-0 text-xs font-semibold text-white truncate">
-                    <LatexRenderer content={optionText} />
-                  </div>
-                  {showCorrectAnswer && (
-                    <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">
-                      {count} ({percent}%)
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
+          {/* Options Grid Hidden - Viewable in Modal */}
           {/* Explanation (Pembahasan) if revealed */}
           {showCorrectAnswer && activeQuestion.explanation && (
             <div className="p-2.5 bg-indigo-950/60 border border-indigo-500/40 rounded-xl flex items-start gap-2 text-xs">
@@ -1369,6 +1308,9 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+
+
+
 
 
 
