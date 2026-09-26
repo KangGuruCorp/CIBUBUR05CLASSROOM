@@ -70,22 +70,41 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
   const sessionId = useMemo(() => `paper_${quiz.id}_${classId}`, [quiz.id, classId]);
 
-  // Students in class
+  // Students in class (with fallback to all students if classId is empty or 'all')
   const classStudents = useMemo(() => {
-    return users
-      .filter((u) => u.role === 'student' && u.classIds?.includes(classId))
-      .sort((a, b) => (a.absentNumber ?? 999) - (b.absentNumber ?? 999));
+    let list = users.filter((u) => u.role === 'student');
+    if (classId && classId !== 'all') {
+      const classFiltered = list.filter(
+        (u) => u.classIds?.includes(classId) || (u as any).classId === classId
+      );
+      if (classFiltered.length > 0) {
+        list = classFiltered;
+      }
+    }
+    return list.sort((a, b) => {
+      const numA = a.absentNumber ?? 999;
+      const numB = b.absentNumber ?? 999;
+      if (numA !== numB) return numA - numB;
+      return a.displayName.localeCompare(b.displayName);
+    });
   }, [users, classId]);
 
   // Map absentNumber/markerId to student
   const studentByMarkerId = useMemo(() => {
     const map = new Map<number, User>();
+    // First map all students by absentNumber as base fallback
+    users.filter((u) => u.role === 'student').forEach((st) => {
+      if (st.absentNumber && st.absentNumber > 0) {
+        map.set(st.absentNumber, st);
+      }
+    });
+    // Then prioritize active class students
     classStudents.forEach((st, idx) => {
       const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : idx + 1;
       map.set(markerId, st);
     });
     return map;
-  }, [classStudents]);
+  }, [classStudents, users]);
 
   // Cache answered students for current question
   const answeredStudentsRef = useRef<Record<string, PaperOption>>({});
@@ -226,7 +245,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     if (!isOpen) return;
 
     const AR = (jsAruco2 as any).AR || (jsAruco2 as any);
-    const detector = new AR.Detector();
+    const detector = new AR.Detector({ dictionaryName: 'ARUCO' });
 
     let animationFrameId: number;
     let lastProcessTime = 0;
@@ -401,7 +420,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
           const imageData = ctx.getImageData(0, 0, img.width, img.height);
 
           const AR = (jsAruco2 as any).AR || (jsAruco2 as any);
-          const detector = new AR.Detector();
+          const detector = new AR.Detector({ dictionaryName: 'ARUCO' });
           const markers = detector.detect(imageData);
 
           if (!markers || markers.length === 0) {

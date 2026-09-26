@@ -50,11 +50,23 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
   // Active class info
   const activeClass = useMemo(() => classes.find((c) => c.id === classId), [classes, classId]);
 
-  // Students in class
+  // Students in class (with fallback to all students if classId is empty or 'all')
   const classStudents = useMemo(() => {
-    return users
-      .filter((u) => u.role === 'student' && u.classIds?.includes(classId))
-      .sort((a, b) => (a.absentNumber ?? 999) - (b.absentNumber ?? 999));
+    let list = users.filter((u) => u.role === 'student');
+    if (classId && classId !== 'all') {
+      const classFiltered = list.filter(
+        (u) => u.classIds?.includes(classId) || (u as any).classId === classId
+      );
+      if (classFiltered.length > 0) {
+        list = classFiltered;
+      }
+    }
+    return list.sort((a, b) => {
+      const numA = a.absentNumber ?? 999;
+      const numB = b.absentNumber ?? 999;
+      if (numA !== numB) return numA - numB;
+      return a.displayName.localeCompare(b.displayName);
+    });
   }, [users, classId]);
 
   // Session State
