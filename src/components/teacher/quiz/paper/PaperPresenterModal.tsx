@@ -88,7 +88,20 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
   }, [answersByQuestion, currentQuestionIndex]);
 
   // Number of students who answered
-  const answeredCount = Object.keys(currentAnswers).length;
+  const answeredCount = useMemo(() => {
+    return classStudents.filter((st, index) => {
+      const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : index + 1;
+      return Boolean(
+        currentAnswers[st.uid] ||
+        ((st as any).id && currentAnswers[(st as any).id]) ||
+        currentAnswers[`marker_${markerId}`] ||
+        currentAnswers[markerId] ||
+        Object.values(currentAnswers).some(
+          (a) => a && (a.markerId === markerId || a.studentId === st.uid || ((st as any).id && a.studentId === (st as any).id))
+        )
+      );
+    }).length;
+  }, [classStudents, currentAnswers]);
 
   // Poll / fetch session status periodically or sync via SSE
   useEffect(() => {
@@ -109,6 +122,21 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
               setAnswersByQuestion(session.answersByQuestion);
             }
           }
+        } else {
+          // Direct endpoint fallback
+          const altRes = await fetch(`/api/paper-sessions/${encodeURIComponent(sessionId)}`);
+          if (altRes.ok) {
+            const session: PaperModeSession = await altRes.json();
+            if (session && session.id) {
+              setCurrentQuestionIndex(session.currentQuestionIndex ?? 0);
+              setIsLocked(session.status === 'question_closed');
+              setShowLiveStats(Boolean(session.showLiveStats));
+              setShowCorrectAnswer(Boolean(session.showCorrectAnswer));
+              if (session.answersByQuestion) {
+                setAnswersByQuestion(session.answersByQuestion);
+              }
+            }
+          }
         }
       } catch (err) {
         console.warn('Error loading paper session:', err);
@@ -124,7 +152,14 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
       if (payload && payload.sessionId === sessionId) {
         setAnswersByQuestion((prev) => {
           const qAnswers = { ...(prev[payload.questionIndex] || {}) };
-          qAnswers[payload.answer.studentId] = payload.answer;
+          if (payload.answer) {
+            if (payload.answer.studentId) {
+              qAnswers[payload.answer.studentId] = payload.answer;
+            }
+            if (payload.answer.markerId) {
+              qAnswers[`marker_${payload.answer.markerId}`] = payload.answer;
+            }
+          }
           return {
             ...prev,
             [payload.questionIndex]: qAnswers,
@@ -258,7 +293,7 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
         <div className="flex items-center gap-4">
           <div className="px-3.5 py-1.5 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 font-extrabold text-sm flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>MODUS KERTAS</span>
+            <span>MODE KERTAS</span>
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight text-white leading-tight">
@@ -511,8 +546,19 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
           <div className="flex-1 p-4 overflow-y-auto grid grid-cols-2 gap-2 content-start">
             {classStudents.map((st, index) => {
               const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : index + 1;
-              const hasAnswered = Boolean(currentAnswers[st.uid]);
-              const isJustUpdated = recentlyChangedStudentId === st.uid;
+              const hasAnswered = Boolean(
+                currentAnswers[st.uid] ||
+                ((st as any).id && currentAnswers[(st as any).id]) ||
+                currentAnswers[`marker_${markerId}`] ||
+                currentAnswers[markerId] ||
+                Object.values(currentAnswers).some(
+                  (a) => a && (a.markerId === markerId || a.studentId === st.uid || ((st as any).id && a.studentId === (st as any).id))
+                )
+              );
+              const isJustUpdated =
+                recentlyChangedStudentId === st.uid ||
+                recentlyChangedStudentId === `marker_${markerId}` ||
+                recentlyChangedStudentId === String(markerId);
 
               return (
                 <div

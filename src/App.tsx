@@ -38,7 +38,7 @@ import { TeacherQuizPage } from './components/teacher/quiz/TeacherQuizPage';
 // Collaborative Board (Ruang Kolaborasi)
 import { CollabBoardPage } from './components/collab/CollabBoardPage';
 
-// Modus Kertas (Paper Mode) Standalone View
+// Mode Kertas (Paper Mode) Standalone View
 import { PaperStandaloneView } from './components/teacher/quiz/paper/PaperStandaloneView';
 
 const MainContent: React.FC = () => {

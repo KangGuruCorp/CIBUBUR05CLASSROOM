@@ -62,9 +62,16 @@ export function getMarkerOrientation(corners: { x: number; y: number }[]): {
   edges.sort((a, b) => a.y - b.y);
   const selectedOption = edges[0].option;
 
+  // Approximate marker edge length to detect diagonal tilt ambiguity
+  const edgeLen = Math.hypot(c1.x - c0.x, c1.y - c0.y);
+  // If the difference between the top 2 edges is less than 7% of marker size,
+  // the card is held at a diagonal ~45° corner tilt and orientation is not yet decisive
+  const isAmbiguous = (edges[1].y - edges[0].y) < Math.max(3, edgeLen * 0.07);
+
   return {
     option: selectedOption,
     rotationDegrees: Math.round(angle),
+    isAmbiguous,
   };
 }
 
@@ -119,7 +126,7 @@ export function generateStudentCardHtml(student: PaperCardStudentInfo, themeInde
       <!-- Header -->
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px;">
         <div>
-          <div style="display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; color: ${theme.primary}; background: ${theme.bgBadge}; padding: 2px 7px; border-radius: 9999px; text-transform: uppercase;">GAMI-CLASS • MODUS KERTAS</div>
+          <div style="display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.08em; color: ${theme.primary}; background: ${theme.bgBadge}; padding: 2px 7px; border-radius: 9999px; text-transform: uppercase;">GAMI-CLASS • MODE KERTAS</div>
           <div style="font-size: 16px; font-weight: 900; color: #0f172a; line-height: 1.2; margin-top: 3px;">${student.studentName}</div>
           <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-top: 1px;">${student.className} • No. Absen: <strong style="color: #0f172a; font-weight: 800;">${student.absentNumber ?? '-'}</strong></div>
         </div>

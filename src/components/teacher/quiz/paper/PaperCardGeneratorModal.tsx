@@ -231,7 +231,7 @@ export const PaperCardGeneratorModal: React.FC<PaperCardGeneratorModalProps> = (
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #f1f5f9; padding-bottom: 5px;">
             <div>
               <div style="display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: ${theme.primary}; background: ${theme.bgBadge}; padding: 2px 7px; border-radius: 9999px;">
-                GAMI-CLASS • MODUS KERTAS
+                GAMI-CLASS • MODE KERTAS
               </div>
               <div style="font-size: ${isTwoPerPage ? '15px' : '19px'}; font-weight: 900; color: #0f172a; margin-top: 2px; line-height: 1.2;">
                 ${card.studentName}
@@ -536,7 +536,7 @@ export const PaperCardGeneratorModal: React.FC<PaperCardGeneratorModalProps> = (
                             color: theme.primary,
                           }}
                         >
-                          GAMI-CLASS • MODUS KERTAS
+                          GAMI-CLASS • MODE KERTAS
                         </span>
                         <h4 className="text-base font-black text-slate-900 leading-tight">
                           {card.studentName}

@@ -626,6 +626,19 @@ app.get('/api/collections/:collection', (req, res) => {
   res.json(items);
 });
 
+// GET single item from collection by ID
+app.get('/api/collections/:collection/:id', (req, res) => {
+  const { collection, id } = req.params;
+  const items = memoryDb[collection] || [];
+  if (Array.isArray(items)) {
+    const found = items.find(i => i && (i.id === id || i.uid === id));
+    if (found) return res.json(found);
+  } else if (typeof items === 'object' && items !== null) {
+    if (items[id]) return res.json(items[id]);
+  }
+  res.status(404).json({ error: 'Item not found' });
+});
+
 // PUT upsert a document in a collection
 app.put('/api/collections/:collection/:id', (req, res) => {
   if (!req.body || typeof req.body !== 'object') {
@@ -709,9 +722,19 @@ app.post('/api/paper-sessions/:id/answer', (req, res) => {
   }
 
   if (!memoryDb.paperSessions) memoryDb.paperSessions = [];
-  const session = memoryDb.paperSessions.find(s => s && s.id === id);
+  let session = memoryDb.paperSessions.find(s => s && s.id === id);
   if (!session) {
-    return res.status(404).json({ error: 'Paper session not found' });
+    session = {
+      id,
+      currentQuestionIndex: questionIndex,
+      status: 'active',
+      showLiveStats: false,
+      showCorrectAnswer: false,
+      answersByQuestion: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryDb.paperSessions.push(session);
   }
 
   session.answersByQuestion = session.answersByQuestion || {};
@@ -740,16 +763,28 @@ app.post('/api/paper-sessions/:id/answer', (req, res) => {
 app.patch('/api/paper-sessions/:id/control', (req, res) => {
   const { id } = req.params;
   if (!memoryDb.paperSessions) memoryDb.paperSessions = [];
-  const idx = memoryDb.paperSessions.findIndex(s => s && s.id === id);
+  let idx = memoryDb.paperSessions.findIndex(s => s && s.id === id);
   if (idx < 0) {
-    return res.status(404).json({ error: 'Paper session not found' });
+    const newSession = {
+      id,
+      currentQuestionIndex: 0,
+      status: 'active',
+      showLiveStats: false,
+      showCorrectAnswer: false,
+      answersByQuestion: {},
+      ...req.body,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryDb.paperSessions.push(newSession);
+    idx = memoryDb.paperSessions.length - 1;
+  } else {
+    memoryDb.paperSessions[idx] = {
+      ...memoryDb.paperSessions[idx],
+      ...req.body,
+      updatedAt: new Date().toISOString(),
+    };
   }
-
-  memoryDb.paperSessions[idx] = {
-    ...memoryDb.paperSessions[idx],
-    ...req.body,
-    updatedAt: new Date().toISOString(),
-  };
 
   dbRevision = Date.now();
   broadcastDbChange({
@@ -761,6 +796,15 @@ app.patch('/api/paper-sessions/:id/control', (req, res) => {
 
   scheduleDiskSave();
   res.json({ success: true, session: memoryDb.paperSessions[idx] });
+});
+
+// GET paper session by ID
+app.get('/api/paper-sessions/:id', (req, res) => {
+  const { id } = req.params;
+  if (!memoryDb.paperSessions) memoryDb.paperSessions = [];
+  const session = memoryDb.paperSessions.find(s => s && s.id === id);
+  if (session) return res.json(session);
+  res.status(404).json({ error: 'Paper session not found' });
 });
 
 // AI Document/Text Quiz Extraction with Gemini API

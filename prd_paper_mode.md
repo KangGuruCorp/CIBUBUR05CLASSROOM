@@ -1,4 +1,4 @@
-# Product Requirements Document (PRD): Modus Kertas (Paper Mode)
+# Product Requirements Document (PRD): Mode Kertas (Paper Mode)
 
 ## 1. Ringkasan Eksekutif
 **Nama Fitur:** Paper Mode (Penilaian Formatif Tanpa Gawai)

@@ -27440,8 +27440,8 @@
       "avatarUrl": "/uploads/avatars/siswa_3667_avatar_1790249329822_uauxy.jpg",
       "classId": "cls_6a",
       "isOnline": true,
-      "lastSeen": 1790327501420,
-      "lastSeenIso": "2026-09-25T09:11:41.420Z",
+      "lastSeen": 1790406300443,
+      "lastSeenIso": "2026-09-26T07:05:00.443Z",
       "activity": "Aktif di Aplikasi"
     },
     "usr_std_1788692119731_5_nadd": {
@@ -27453,6 +27453,17 @@
       "isOnline": true,
       "lastSeen": 1790321540287,
       "lastSeenIso": "2026-09-25T07:32:20.287Z",
+      "activity": "Aktif di Aplikasi"
+    },
+    "usr_guru_rahma": {
+      "userId": "usr_guru_rahma",
+      "displayName": "Teguh Firmansyah Apriliana, M.Pd",
+      "role": "teacher",
+      "avatarUrl": "/uploads/avatars/guru.teguh_avatar_1788755114315_0ovu.jpg",
+      "classId": "cls_6a",
+      "isOnline": true,
+      "lastSeen": 1790420214336,
+      "lastSeenIso": "2026-09-26T10:56:54.336Z",
       "activity": "Aktif di Aplikasi"
     }
   },
@@ -34722,5 +34733,146 @@
       "updatedAt": "2026-09-17T14:45:15.102Z"
     }
   ],
-  "paperSessions": []
+  "paperSessions": [
+    {
+      "id": "paper_quiz_1789097229707_cls_6a",
+      "quizId": "quiz_1789097229707",
+      "classId": "cls_6a",
+      "teacherId": "",
+      "currentQuestionIndex": 6,
+      "status": "active",
+      "showLiveStats": false,
+      "showCorrectAnswer": false,
+      "answersByQuestion": {
+        "0": {
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "B",
+            "timestamp": 1790415112027
+          }
+        },
+        "1": {
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "B",
+            "timestamp": 1790415270730
+          },
+          "usr_std_1788692119731_1_8iu0": {
+            "studentId": "usr_std_1788692119731_1_8iu0",
+            "markerId": 2,
+            "studentName": "AFIQAH PUTRI FAUZIAH",
+            "selectedOption": "D",
+            "timestamp": 1790415286333
+          }
+        },
+        "2": {
+          "marker_63": {
+            "studentId": "marker_63",
+            "markerId": 63,
+            "studentName": "Siswa #63",
+            "selectedOption": "D",
+            "timestamp": 1790415520750
+          },
+          "usr_std_1788692119731_1_8iu0": {
+            "studentId": "usr_std_1788692119731_1_8iu0",
+            "markerId": 2,
+            "studentName": "AFIQAH PUTRI FAUZIAH",
+            "selectedOption": "C",
+            "timestamp": 1790415576462
+          },
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "C",
+            "timestamp": 1790415578936
+          },
+          "marker_0": {
+            "studentId": "marker_0",
+            "markerId": 0,
+            "studentName": "Siswa #0",
+            "selectedOption": "B",
+            "timestamp": 1790415638289
+          }
+        },
+        "3": {
+          "usr_std_1788692119731_1_8iu0": {
+            "studentId": "usr_std_1788692119731_1_8iu0",
+            "markerId": 2,
+            "studentName": "AFIQAH PUTRI FAUZIAH",
+            "selectedOption": "B",
+            "timestamp": 1790415904307
+          },
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "D",
+            "timestamp": 1790415908865
+          }
+        },
+        "4": {
+          "usr_std_1788692119731_1_8iu0": {
+            "studentId": "usr_std_1788692119731_1_8iu0",
+            "markerId": 2,
+            "studentName": "AFIQAH PUTRI FAUZIAH",
+            "selectedOption": "C",
+            "timestamp": 1790415954435
+          },
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "C",
+            "timestamp": 1790415974991
+          }
+        },
+        "5": {
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "D",
+            "timestamp": 1790416047661
+          },
+          "usr_std_1788692119731_1_8iu0": {
+            "studentId": "usr_std_1788692119731_1_8iu0",
+            "markerId": 2,
+            "studentName": "AFIQAH PUTRI FAUZIAH",
+            "selectedOption": "D",
+            "timestamp": 1790416047860
+          }
+        },
+        "6": {
+          "usr_std_1788692119731_0_vivz": {
+            "studentId": "usr_std_1788692119731_0_vivz",
+            "markerId": 1,
+            "studentName": "ACHMAD RAFFA PRATAMA",
+            "selectedOption": "B",
+            "timestamp": 1790416166495
+          },
+          "usr_std_1788692119731_3_s16k": {
+            "studentId": "usr_std_1788692119731_3_s16k",
+            "markerId": 4,
+            "studentName": "ALUNA PUTRI FAUZI",
+            "selectedOption": "A",
+            "timestamp": 1790416178685
+          },
+          "usr_std_1788692119731_4_o62r": {
+            "studentId": "usr_std_1788692119731_4_o62r",
+            "markerId": 5,
+            "studentName": "ALZAHRA KHASANAH PUTRI",
+            "selectedOption": "A",
+            "timestamp": 1790416184527
+          }
+        }
+      },
+      "createdAt": "2026-09-26T08:08:31.439Z",
+      "updatedAt": "2026-09-26T09:49:44.527Z"
+    }
+  ]
 }

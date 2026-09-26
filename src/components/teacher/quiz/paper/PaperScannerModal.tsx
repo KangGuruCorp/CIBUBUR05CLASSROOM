@@ -22,6 +22,7 @@ import {
   Smartphone,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from 'lucide-react';
 import jsAruco2 from 'js-aruco2';
 import { Quiz, User } from '../../../../types';
@@ -29,6 +30,7 @@ import { PaperModeAnswer, PaperModeSession, PaperOption } from '../../../../type
 import { useApp } from '../../../../context/AppContext';
 import { getMarkerOrientation } from '../../../../utils/aruco';
 import { submitPaperAnswer, controlPaperSession } from '../../../../lib/firestoreSync';
+import { LatexRenderer } from '../../../../utils/latex';
 
 interface PaperScannerModalProps {
   isOpen: boolean;
@@ -57,6 +59,8 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   const [showHelpSteps, setShowHelpSteps] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [photoToast, setPhotoToast] = useState<string | null>(null);
+  const [showStudentList, setShowStudentList] = useState(true);
+  const [visibleMarkersCount, setVisibleMarkersCount] = useState(0);
 
   const [recentDetections, setRecentDetections] = useState<
     {
@@ -100,13 +104,15 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     const map = new Map<number, User>();
     // First map all students by absentNumber as base fallback
     users.filter((u) => u.role === 'student').forEach((st) => {
-      if (st.absentNumber && st.absentNumber > 0) {
-        map.set(st.absentNumber, st);
+      const num = Number(st.absentNumber);
+      if (!isNaN(num) && num > 0) {
+        map.set(num, st);
       }
     });
     // Then prioritize active class students
     classStudents.forEach((st, idx) => {
-      const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : idx + 1;
+      const num = Number(st.absentNumber);
+      const markerId = !isNaN(num) && num > 0 ? num : idx + 1;
       map.set(markerId, st);
     });
     return map;
@@ -260,14 +266,26 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode,
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+          },
+          audio: false,
+        });
+      } catch (err: any) {
+        // Fallback for laptop webcams that don't support facingMode constraint
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      }
 
       streamRef.current = stream;
       if (videoRef.current) {
@@ -348,9 +366,34 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
             // Draw detection AR overlays
             if (markers && markers.length > 0) {
+              const newDetectionsInBatch: { studentName: string; option: PaperOption; prevOption?: PaperOption; isChange: boolean }[] = [];
+              let hasChangeInBatch = false;
+              let hasNewInBatch = false;
+              let validCount = 0;
+
               markers.forEach((marker: any) => {
+                if (!marker || !marker.corners || marker.corners.length < 4) return;
                 const markerId = marker.id;
-                const { option } = getMarkerOrientation(marker.corners);
+                // 1. Filter out noise or invalid marker IDs
+                if (typeof markerId !== 'number' || markerId <= 0 || markerId > 150) return;
+
+                const student = studentByMarkerId.get(markerId);
+                // Discard random background false-positives not matching class students
+                if (!student && markerId > Math.max(classStudents.length + 5, 45)) return;
+
+                // 2. Filter out tiny speckles/artifacts smaller than 14px
+                const [c0, c1, c2, c3] = marker.corners;
+                const edge1 = Math.hypot(c1.x - c0.x, c1.y - c0.y);
+                const edge2 = Math.hypot(c2.x - c1.x, c2.y - c1.y);
+                if (Math.min(edge1, edge2) < 14) return;
+
+                validCount++;
+
+                // 3. Calculate orientation & check for diagonal tilt ambiguity
+                const { option, isAmbiguous } = getMarkerOrientation(marker.corners);
+
+                const studentName = student ? student.displayName : `Siswa #${markerId}`;
+                const studentId = student ? student.uid : `marker_${markerId}`;
 
                 // Check if this student recently changed their answer
                 const isRecentlyChanged = recentDetections.some(
@@ -359,74 +402,76 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
                 // Draw bounding box
                 ctx.beginPath();
-                ctx.moveTo(marker.corners[0].x, marker.corners[0].y);
-                for (let i = 1; i < marker.corners.length; i++) {
-                  ctx.lineTo(marker.corners[i].x, marker.corners[i].y);
-                }
-                ctx.closePath();
-                ctx.lineWidth = isRecentlyChanged ? 5 : 4;
-                ctx.strokeStyle = isRecentlyChanged ? '#22d3ee' : '#10b981'; // Cyan if changed, Emerald if normal
-                ctx.stroke();
-
-                // Draw Top Edge indicator (the chosen side)
-                const c0 = marker.corners[0];
-                const c1 = marker.corners[1];
-                ctx.beginPath();
                 ctx.moveTo(c0.x, c0.y);
                 ctx.lineTo(c1.x, c1.y);
-                ctx.lineWidth = 6;
-                ctx.strokeStyle = isRecentlyChanged ? '#38bdf8' : '#3b82f6';
+                ctx.lineTo(c2.x, c2.y);
+                ctx.lineTo(c3.x, c3.y);
+                ctx.closePath();
+                ctx.lineWidth = isRecentlyChanged ? 5 : 4;
+                ctx.strokeStyle = isAmbiguous
+                  ? '#f59e0b' // Amber if tilted ambiguously
+                  : isRecentlyChanged
+                  ? '#22d3ee' // Cyan if changed
+                  : '#10b981'; // Emerald if normal
                 ctx.stroke();
 
                 // Draw AR label pill
-                const centerX =
-                  (marker.corners[0].x +
-                    marker.corners[1].x +
-                    marker.corners[2].x +
-                    marker.corners[3].x) /
-                  4;
-                const centerY =
-                  (marker.corners[0].y +
-                    marker.corners[1].y +
-                    marker.corners[2].y +
-                    marker.corners[3].y) /
-                  4;
+                const centerX = (c0.x + c1.x + c2.x + c3.x) / 4;
+                const centerY = (c0.y + c1.y + c2.y + c3.y) / 4;
 
-                const labelText = isRecentlyChanged
-                  ? `🔄 ${studentName} ➔ [ ${option} ] (Diperbarui)`
-                  : `${studentName} ➔ [ ${option} ]`;
+                const labelText = isAmbiguous
+                  ? `${studentName} • Tegakkan Kartu`
+                  : isRecentlyChanged
+                  ? `🔄 ${studentName} • Diperbarui`
+                  : `✓ ${studentName} • Terekam`;
 
-                ctx.font = 'bold 16px ui-sans-serif, system-ui';
+                ctx.font = 'bold 15px ui-sans-serif, system-ui';
                 const textWidth = ctx.measureText(labelText).width;
 
-                ctx.fillStyle = isRecentlyChanged ? 'rgba(8, 51, 68, 0.92)' : 'rgba(15, 23, 42, 0.85)';
+                ctx.fillStyle = isAmbiguous
+                  ? 'rgba(69, 26, 3, 0.92)'
+                  : isRecentlyChanged
+                  ? 'rgba(8, 51, 68, 0.92)'
+                  : 'rgba(15, 23, 42, 0.85)';
                 ctx.beginPath();
-                ctx.roundRect(
-                  centerX - textWidth / 2 - 12,
-                  centerY - 32,
-                  textWidth + 24,
-                  30,
-                  8
-                );
+                if (ctx.roundRect) {
+                  ctx.roundRect(
+                    centerX - textWidth / 2 - 12,
+                    centerY - 32,
+                    textWidth + 24,
+                    30,
+                    8
+                  );
+                } else {
+                  ctx.rect(
+                    centerX - textWidth / 2 - 12,
+                    centerY - 32,
+                    textWidth + 24,
+                    30
+                  );
+                }
                 ctx.fill();
                 ctx.lineWidth = isRecentlyChanged ? 2.5 : 1.5;
-                ctx.strokeStyle = isRecentlyChanged ? '#22d3ee' : '#10b981';
+                ctx.strokeStyle = isAmbiguous
+                  ? '#f59e0b'
+                  : isRecentlyChanged
+                  ? '#22d3ee'
+                  : '#10b981';
                 ctx.stroke();
 
-                ctx.fillStyle = isRecentlyChanged ? '#67e8f9' : '#ffffff';
+                ctx.fillStyle = isAmbiguous ? '#fcd34d' : isRecentlyChanged ? '#67e8f9' : '#ffffff';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(labelText, centerX, centerY - 17);
 
-                // If not locked, record answer if new or changed
-                if (!isLocked) {
+                // If not locked and not ambiguously tilted, record answer
+                if (!isLocked && !isAmbiguous) {
                   const prevOption = answeredStudentsRef.current[studentId];
                   if (prevOption !== option) {
                     const isChange = prevOption !== undefined;
                     let shouldCommit = false;
 
                     // If student is changing an already recorded answer, require 2 consecutive frames (~110ms)
-                    // so rotating the card in the air doesn't trigger an accidental intermediate side
                     if (isChange) {
                       const cand = candidateChangesRef.current[studentId];
                       if (cand && cand.option === option) {
@@ -439,12 +484,13 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                         candidateChangesRef.current[studentId] = { option, count: 1 };
                       }
                     } else {
+                      // First time recording this student: commit immediately so sweeping across the classroom catches all cards!
                       shouldCommit = true;
                     }
 
                     if (shouldCommit) {
                       answeredStudentsRef.current[studentId] = option;
-                      setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+                      answeredStudentsRef.current[`marker_${markerId}`] = option;
 
                       // Submit to server
                       const answerPayload: PaperModeAnswer = {
@@ -456,37 +502,68 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                       };
                       submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
 
-                      // Trigger sound & haptic
-                      if (isChange) {
-                        playChangeSound();
-                        if ('vibrate' in navigator) {
-                          try {
-                            navigator.vibrate([45, 50, 45]);
-                          } catch {}
-                        }
-                      } else {
-                        playBeep();
-                        if ('vibrate' in navigator) {
-                          try {
-                            navigator.vibrate(40);
-                          } catch {}
-                        }
+                      // Instant local window event for zero-latency sync with presenter in same window
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(
+                          new CustomEvent('paper_answer', {
+                            detail: {
+                              sessionId,
+                              questionIndex: currentQuestionIndex,
+                              answer: answerPayload,
+                            },
+                          })
+                        );
                       }
 
-                      // Add to recent detections feed
-                      setRecentDetections((prev) => [
-                        { studentName, option, prevOption, isChange, timestamp: Date.now() },
-                        ...prev.slice(0, 4),
-                      ]);
+                      newDetectionsInBatch.push({
+                        studentName,
+                        option,
+                        prevOption,
+                        isChange,
+                      });
+
+                      if (isChange) hasChangeInBatch = true;
+                      else hasNewInBatch = true;
                     }
                   } else {
-                    // Option is steady, clear any pending change candidate
                     if (candidateChangesRef.current[studentId]) {
                       delete candidateChangesRef.current[studentId];
                     }
                   }
                 }
               });
+
+              setVisibleMarkersCount(validCount);
+
+              // Single batched update for UI, sound, and toast when multiple cards detected
+              if (newDetectionsInBatch.length > 0) {
+                setAnsweredCount(Object.keys(answeredStudentsRef.current).length);
+
+                if (hasChangeInBatch) {
+                  playChangeSound();
+                  if ('vibrate' in navigator) {
+                    try { navigator.vibrate([45, 50, 45]); } catch {}
+                  }
+                } else if (hasNewInBatch) {
+                  playBeep();
+                  if ('vibrate' in navigator) {
+                    try { navigator.vibrate(40); } catch {}
+                  }
+                }
+
+                setRecentDetections((prev) => [
+                  ...newDetectionsInBatch.map((d) => ({
+                    studentName: d.studentName,
+                    option: d.option,
+                    prevOption: d.prevOption,
+                    isChange: d.isChange,
+                    timestamp: Date.now(),
+                  })),
+                  ...prev.slice(0, 4),
+                ]);
+              }
+            } else {
+              setVisibleMarkersCount(0);
             }
           }
         }
@@ -540,9 +617,14 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
           let detectedCount = 0;
           let changedCount = 0;
           markers.forEach((marker: any) => {
+            if (!marker || !marker.corners || marker.corners.length < 4) return;
             const markerId = marker.id;
-            const { option } = getMarkerOrientation(marker.corners);
+            if (typeof markerId !== 'number' || markerId <= 0 || markerId > 150) return;
+
             const student = studentByMarkerId.get(markerId);
+            if (!student && markerId > Math.max(classStudents.length + 5, 45)) return;
+
+            const { option } = getMarkerOrientation(marker.corners);
             const studentName = student ? student.displayName : `Siswa #${markerId}`;
             const studentId = student ? student.uid : `marker_${markerId}`;
 
@@ -552,6 +634,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             }
 
             answeredStudentsRef.current[studentId] = option;
+            answeredStudentsRef.current[`marker_${markerId}`] = option;
             const answerPayload: PaperModeAnswer = {
               studentId,
               markerId,
@@ -560,6 +643,18 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
               timestamp: Date.now(),
             };
             submitPaperAnswer(sessionId, currentQuestionIndex, answerPayload);
+
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(
+                new CustomEvent('paper_answer', {
+                  detail: {
+                    sessionId,
+                    questionIndex: currentQuestionIndex,
+                    answer: answerPayload,
+                  },
+                })
+              );
+            }
             detectedCount++;
           });
 
@@ -588,6 +683,34 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   };
 
   const activeQuestion = quiz.questions[currentQuestionIndex] || quiz.questions[0];
+
+  const availableLetters: PaperOption[] = useMemo(() => {
+    if (!activeQuestion) return ['A', 'B', 'C', 'D'];
+    const opts = (activeQuestion.options || []).filter(
+      (o) => o !== undefined && o !== null && o.trim() !== ''
+    );
+    if (opts.length <= 2) return ['A', 'B'];
+    if (opts.length === 3) return ['A', 'B', 'C'];
+    return ['A', 'B', 'C', 'D'];
+  }, [activeQuestion]);
+
+  const isTrueFalse = availableLetters.length === 2;
+
+  const optionStats = useMemo(() => {
+    const counts: Record<PaperOption, number> = { A: 0, B: 0, C: 0, D: 0 };
+    classStudents.forEach((st, idx) => {
+      const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : idx + 1;
+      const opt =
+        answeredStudentsRef.current[st.uid] ||
+        ((st as any).id && answeredStudentsRef.current[(st as any).id]) ||
+        answeredStudentsRef.current[`marker_${markerId}`] ||
+        answeredStudentsRef.current[markerId];
+      if (opt && counts[opt] !== undefined) {
+        counts[opt]++;
+      }
+    });
+    return counts;
+  }, [classStudents, answeredCount]);
 
   const handleNextQuestion = async () => {
     if (currentQuestionIndex < quiz.questions.length - 1) {
@@ -678,6 +801,21 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
         {/* Action icons */}
         <div className="flex items-center gap-2">
+          {/* Toggle Student List on Right */}
+          <button
+            type="button"
+            onClick={() => setShowStudentList((prev) => !prev)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              showStudentList
+                ? 'bg-indigo-600 border-indigo-400 text-white shadow-xs'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+            }`}
+            title="Tampilkan / Sembunyikan Daftar Siswa di Sebelah Kanan"
+          >
+            <Users className="w-3.5 h-3.5 text-indigo-300" />
+            <span className="hidden sm:inline">Daftar Siswa</span>
+          </button>
+
           {/* Snap Photo Button */}
           <button
             type="button"
@@ -722,8 +860,12 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         </div>
       </header>
 
-      {/* Camera Preview with AR Overlay */}
-      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+      {/* Main Content Area: Left (Camera + Question) & Right (Student List) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Column: Camera on top, Question displayed below */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Camera Preview with AR Overlay */}
+          <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden min-h-[220px]">
         {/* Hidden video element supplying frames */}
         <video
           ref={videoRef}
@@ -740,7 +882,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         />
 
         {/* Floating Scanner Mode Status Pill */}
-        <div className="z-20 absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
+        <div className="z-20 absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1.5">
           {isLocked ? (
             <div className="px-3.5 py-1.5 rounded-full bg-rose-950/90 border border-rose-500/50 backdrop-blur-md flex items-center gap-2 shadow-xl">
               <Lock className="w-3.5 h-3.5 text-rose-400" />
@@ -754,6 +896,13 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
               <span className="text-[11px] font-black text-emerald-300">
                 Pemindaian Aktif — Siswa Bebas Merubah Jawaban
               </span>
+            </div>
+          )}
+
+          {visibleMarkersCount > 0 && (
+            <div className="px-3 py-1 rounded-full bg-emerald-950/90 border border-emerald-400/60 backdrop-blur-md flex items-center gap-1.5 shadow-lg text-[10px] font-black text-emerald-200 animate-pulse">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>{visibleMarkersCount} Kartu Terdeteksi Sekaligus</span>
             </div>
           )}
         </div>
@@ -894,21 +1043,13 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 )}
                 <span className="truncate">{det.studentName}</span>
-                {det.isChange && det.prevOption && (
-                  <span className="text-[10px] text-cyan-300 font-mono">
-                    {det.prevOption} ➔
+                {det.isChange ? (
+                  <span className="px-2 py-0.5 rounded-md font-black text-[10px] bg-cyan-400 text-slate-950">
+                    Diperbarui
                   </span>
-                )}
-                <span
-                  className={`px-1.5 py-0.5 rounded-md font-black text-[10px] ${
-                    det.isChange ? 'bg-cyan-400 text-slate-950' : 'bg-emerald-500 text-slate-950'
-                  }`}
-                >
-                  {det.option}
-                </span>
-                {det.isChange && (
-                  <span className="text-[9px] text-cyan-300 font-extrabold uppercase tracking-wider">
-                    Ubah
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md font-black text-[10px] bg-emerald-400 text-slate-950">
+                    Terekam
                   </span>
                 )}
               </div>
@@ -927,76 +1068,247 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             </div>
           </div>
         )}
+        </div>
+
+        {/* Question Displayed Directly Below Camera */}
+        <div className="shrink-0 bg-slate-900 border-t border-slate-800 p-3.5 sm:p-4 space-y-2.5 max-h-[46vh] overflow-y-auto shadow-2xl">
+          {/* Header Row: Question Prompt & Nav/Action Controls */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+              <span className="px-2.5 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-black text-xs shrink-0 border border-indigo-500/30 mt-0.5">
+                Soal #{currentQuestionIndex + 1}
+              </span>
+              <div className="text-sm sm:text-base font-extrabold text-white leading-snug">
+                <LatexRenderer content={activeQuestion.prompt} />
+              </div>
+            </div>
+
+            {/* Quick Action & Nav Buttons */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                disabled={currentQuestionIndex === 0}
+                onClick={handlePrevQuestion}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white cursor-pointer transition-colors"
+                title="Soal Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono font-bold text-slate-400 px-1">
+                {currentQuestionIndex + 1}/{quiz.questions.length}
+              </span>
+              <button
+                type="button"
+                disabled={currentQuestionIndex >= quiz.questions.length - 1}
+                onClick={handleNextQuestion}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white cursor-pointer transition-colors"
+                title="Soal Berikutnya"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleLock}
+                className={`ml-1 px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isLocked ? 'bg-rose-600 text-white shadow-xs' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+                title={isLocked ? 'Buka Kunci Jawaban' : 'Kunci Jawaban'}
+              >
+                {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{isLocked ? 'Terkunci' : 'Kunci'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleReveal}
+                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showCorrectAnswer
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                }`}
+                title={showCorrectAnswer ? 'Sembunyikan Kunci' : 'Tampilkan Jawaban Benar'}
+              >
+                {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{showCorrectAnswer ? 'Tutup Kunci' : 'Kunci'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Options Grid */}
+          <div
+            className={`grid gap-2 ${
+              availableLetters.length === 2
+                ? 'grid-cols-2 max-w-xl'
+                : availableLetters.length === 3
+                ? 'grid-cols-3'
+                : 'grid-cols-2 sm:grid-cols-4'
+            }`}
+          >
+            {availableLetters.map((letter) => {
+              const optIdx = (['A', 'B', 'C', 'D'] as const).indexOf(letter);
+              const optionText = activeQuestion.options?.[optIdx] || '';
+              const isCorrectAnswerKey =
+                activeQuestion.correctOptionIndex !== undefined &&
+                activeQuestion.correctOptionIndex === optIdx;
+
+              const count = optionStats[letter] || 0;
+              const percent = answeredCount > 0 ? Math.round((count / answeredCount) * 100) : 0;
+
+              const isHighlightedCorrect = showCorrectAnswer && isCorrectAnswerKey;
+              const isDimmed = showCorrectAnswer && !isCorrectAnswerKey;
+
+              return (
+                <div
+                  key={letter}
+                  className={`p-2 rounded-xl border transition-all flex items-center gap-2 ${
+                    isHighlightedCorrect
+                      ? 'bg-emerald-950/80 border-emerald-400 ring-2 ring-emerald-400/30'
+                      : isDimmed
+                      ? 'bg-slate-900/40 border-slate-800/60 opacity-40'
+                      : 'bg-slate-800/80 border-slate-700/80'
+                  }`}
+                >
+                  <span
+                    className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 shadow-sm ${
+                      isHighlightedCorrect
+                        ? 'bg-emerald-400 text-slate-950'
+                        : isTrueFalse
+                        ? letter === 'A'
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-rose-500 text-white'
+                        : 'bg-indigo-600 text-white'
+                    }`}
+                  >
+                    {letter}
+                  </span>
+                  <div className="flex-1 min-w-0 text-xs font-semibold text-white truncate">
+                    <LatexRenderer content={optionText} />
+                  </div>
+                  {showCorrectAnswer && (
+                    <span className="text-[10px] font-mono text-slate-400 font-bold shrink-0">
+                      {count} ({percent}%)
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Explanation (Pembahasan) if revealed */}
+          {showCorrectAnswer && activeQuestion.explanation && (
+            <div className="p-2.5 bg-indigo-950/60 border border-indigo-500/40 rounded-xl flex items-start gap-2 text-xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0 mt-0.5" />
+              <div className="text-indigo-100 font-medium leading-relaxed">
+                <span className="font-bold text-indigo-300 uppercase tracking-wider text-[10px]">
+                  Pembahasan:
+                </span>{' '}
+                <LatexRenderer content={activeQuestion.explanation} />
+              </div>
+            </div>
+          )}
+        </div>
+        </div>
+
+        {/* Right Sidebar: Live Student Roster Grid */}
+        {showStudentList && (
+          <div className="w-80 lg:w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur-md flex flex-col shrink-0 z-20">
+            <div className="p-3.5 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-300">
+                  Daftar Siswa
+                </span>
+                <p className="text-[10px] text-slate-400">
+                  <strong className="text-emerald-400 font-bold">{answeredCount}</strong> dari {classStudents.length} sudah menjawab
+                </p>
+              </div>
+              {isLocked ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Dikunci
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Live
+                </span>
+              )}
+            </div>
+
+            {/* Student Grid */}
+            <div className="flex-1 p-3 overflow-y-auto grid grid-cols-2 gap-2 content-start">
+              {classStudents.map((st, index) => {
+                const markerId = st.absentNumber && st.absentNumber > 0 ? st.absentNumber : index + 1;
+                const hasAnswered = Boolean(
+                  answeredStudentsRef.current[st.uid] ||
+                  ((st as any).id && answeredStudentsRef.current[(st as any).id]) ||
+                  answeredStudentsRef.current[`marker_${markerId}`] ||
+                  answeredStudentsRef.current[markerId]
+                );
+                const studentAnswer =
+                  answeredStudentsRef.current[st.uid] ||
+                  ((st as any).id && answeredStudentsRef.current[(st as any).id]) ||
+                  answeredStudentsRef.current[`marker_${markerId}`] ||
+                  answeredStudentsRef.current[markerId];
+
+                const isJustUpdated = recentDetections.some(
+                  (d) =>
+                    (d.studentName === st.displayName || d.studentName === `Siswa #${markerId}`) &&
+                    Date.now() - d.timestamp < 3000
+                );
+
+                return (
+                  <div
+                    key={st.uid}
+                    className={`p-2.5 rounded-2xl border transition-all duration-300 flex items-center gap-2 ${
+                      isJustUpdated
+                        ? 'bg-cyan-950/90 border-cyan-400 text-cyan-200 shadow-xl ring-2 ring-cyan-400/40 animate-pulse'
+                        : hasAnswered
+                        ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200 shadow-md ring-2 ring-emerald-400/20'
+                        : 'bg-slate-900/80 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-xl font-mono font-black text-xs flex items-center justify-center shrink-0 transition-colors ${
+                        isJustUpdated
+                          ? 'bg-cyan-400 text-slate-950'
+                          : hasAnswered
+                          ? 'bg-emerald-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {isJustUpdated ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : hasAnswered ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : (
+                        st.absentNumber ?? index + 1
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold truncate text-white leading-tight">
+                        {st.displayName}
+                      </p>
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {isJustUpdated ? (
+                          <span className="text-cyan-300 font-black flex items-center gap-0.5">
+                            🔄 Diperbarui
+                          </span>
+                        ) : hasAnswered ? (
+                          <span className="text-emerald-400 font-extrabold flex items-center gap-0.5">
+                            ✓ Terekam
+                          </span>
+                        ) : (
+                          `#Marker ${markerId}`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Bottom Remote Control for Teacher */}
-      <footer className="p-4 bg-slate-900 border-t border-slate-800 z-20 shrink-0 space-y-3">
-        {/* Question prompt summary */}
-        <div className="px-3 py-1.5 bg-slate-800/80 rounded-xl flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-300 truncate mr-2">
-            #{currentQuestionIndex + 1}: {activeQuestion.prompt}
-          </span>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="text-[11px] font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1 shrink-0 cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Ambil Foto</span>
-          </button>
-        </div>
-
-        {/* Remote Action Buttons */}
-        <div className="flex items-center gap-2">
-          {/* Lock Button */}
-          <button
-            type="button"
-            onClick={handleToggleLock}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
-              isLocked
-                ? 'bg-rose-600 text-white shadow-md'
-                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-            }`}
-          >
-            {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-            <span>{isLocked ? 'Kunci' : 'Kunci Jawaban'}</span>
-          </button>
-
-          {/* Reveal Button */}
-          <button
-            type="button"
-            onClick={handleToggleReveal}
-            className={`flex-1 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
-              showCorrectAnswer
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
-            }`}
-          >
-            {showCorrectAnswer ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            <span>{showCorrectAnswer ? 'Tutup Kunci' : 'Buka Kunci'}</span>
-          </button>
-
-          {/* Nav Prev */}
-          <button
-            type="button"
-            disabled={currentQuestionIndex === 0}
-            onClick={handlePrevQuestion}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          {/* Nav Next */}
-          <button
-            type="button"
-            disabled={currentQuestionIndex >= quiz.questions.length - 1}
-            onClick={handleNextQuestion}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </footer>
     </div>
   );
 };

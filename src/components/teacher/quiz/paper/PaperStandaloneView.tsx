@@ -51,7 +51,7 @@ export const PaperStandaloneView: React.FC = () => {
           <div className="w-12 h-12 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-400 flex items-center justify-center mx-auto animate-pulse">
             ●
           </div>
-          <h2 className="text-base font-bold text-white">Menghubungkan ke Modus Kertas...</h2>
+          <h2 className="text-base font-bold text-white">Menghubungkan ke Mode Kertas...</h2>
           <p className="text-xs text-slate-400">
             Sedang memuat data kuis dan daftar siswa kelas.
           </p>

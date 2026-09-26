@@ -247,7 +247,7 @@ export const TeacherQuizPage: React.FC = () => {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-[#BFDBFE]/50 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
           <input
@@ -255,7 +255,7 @@ export const TeacherQuizPage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari judul kuis, topik, atau mata pelajaran..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#364FFF]"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#364FFF] focus:bg-white transition-all placeholder:text-slate-400"
           />
         </div>
 
@@ -264,7 +264,7 @@ export const TeacherQuizPage: React.FC = () => {
           <select
             value={selectedSubject}
             onChange={(e) => setSelectedSubject(e.target.value)}
-            className="px-3 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#364FFF] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#364FFF] cursor-pointer hover:border-slate-300 transition-colors"
           >
             <option value="all">Semua Mata Pelajaran</option>
             {STANDARD_SUBJECTS.map((sbj) => (
@@ -278,7 +278,7 @@ export const TeacherQuizPage: React.FC = () => {
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value as any)}
-            className="px-3 py-2.5 rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#364FFF] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#364FFF] cursor-pointer hover:border-slate-300 transition-colors"
           >
             <option value="all">Semua Status</option>
             <option value="published">🚀 Dipublikasikan</option>
@@ -323,8 +323,8 @@ export const TeacherQuizPage: React.FC = () => {
                 <div className="h-[1px] flex-1 bg-slate-200/90" />
               </div>
 
-              {/* Quizzes List for this date */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Quizzes Clean List */}
+              <div className="flex flex-col gap-4">
                 {group.quizzes.map((quiz) => {
                   // Count submissions for this quiz
                   const submittedCount = Object.values(quizSubmissions).filter(
@@ -334,18 +334,22 @@ export const TeacherQuizPage: React.FC = () => {
                     (s) => s && s.quizId === quiz.id && s.status === 'submitted'
                   ).length;
 
-                  const isScheduledQuiz = quiz.status === 'scheduled' || Boolean(quiz.openAt && new Date(quiz.openAt).getTime() > Date.now());
-                  const isPublishedQuiz = quiz.status === 'published' && (!quiz.openAt || new Date(quiz.openAt).getTime() <= Date.now());
+                  const isScheduledQuiz =
+                    quiz.status === 'scheduled' ||
+                    Boolean(quiz.openAt && new Date(quiz.openAt).getTime() > Date.now());
+                  const isPublishedQuiz =
+                    quiz.status === 'published' &&
+                    (!quiz.openAt || new Date(quiz.openAt).getTime() <= Date.now());
 
                   return (
                     <div
                       key={quiz.id}
-                      className="bg-white rounded-3xl border border-[#BFDBFE]/60 p-5 shadow-xs hover:shadow-lg hover:border-[#364FFF]/40 transition-all flex flex-col justify-between space-y-4 group"
+                      className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-300/80 transition-all duration-200 p-5 sm:p-6 space-y-4 group"
                     >
-                      <div>
-                        {/* Top Badges */}
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <span className="px-3 py-1 rounded-xl bg-blue-50 text-[#364FFF] font-extrabold text-[11px] border border-blue-100 truncate max-w-[170px]">
+                      {/* Top Bar: Badges & Management Actions */}
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 font-extrabold text-xs border border-indigo-100/80 tracking-wide">
                             {quiz.subject}
                           </span>
 
@@ -354,124 +358,138 @@ export const TeacherQuizPage: React.FC = () => {
                               type="button"
                               onClick={() => handleToggleStatus(quiz)}
                               title="Kuis terjadwal. Klik untuk mengubah ke draf"
-                              className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide uppercase transition-all bg-amber-100 text-amber-800 border border-amber-200 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/80 hover:bg-amber-100 transition-colors cursor-pointer"
                             >
-                              ⏰ Terjadwal
+                              <span className="w-2 h-2 rounded-full bg-amber-500" />
+                              Terjadwal
                             </button>
                           ) : isPublishedQuiz ? (
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(quiz)}
                               title="Kuis aktif. Klik untuk mengubah ke draf"
-                              className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide uppercase transition-all bg-emerald-100 text-emerald-800 border border-emerald-200 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100 transition-colors cursor-pointer"
                             >
-                              ● Aktif
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Aktif
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(quiz)}
                               title="Kuis draf. Klik untuk mempublikasikan"
-                              className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide uppercase transition-all bg-slate-100 text-slate-600 border border-slate-200 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
                             >
-                              ○ Draf
+                              <span className="w-2 h-2 rounded-full bg-slate-400" />
+                              Draf
                             </button>
+                          )}
+
+                          {isScheduledQuiz && quiz.openAt && (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50/80 px-3 py-1 rounded-xl border border-amber-200/60">
+                              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Buka: {formatDateIndo(quiz.openAt)}</span>
+                            </span>
                           )}
                         </div>
 
-                        {/* Title & Topic */}
-                        <h3 className="text-base font-black text-slate-900 leading-snug group-hover:text-[#364FFF] transition-colors line-clamp-2">
+                        {/* Top-Right Secondary Actions (Edit & Hapus) */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(quiz)}
+                            title="Edit Kuis & Soal"
+                            className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(quiz.id, quiz.title)}
+                            title="Hapus Kuis"
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Middle: Title, Topic & Description (Full Width) */}
+                      <div className="space-y-1.5">
+                        <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug">
                           {quiz.title}
                         </h3>
                         {quiz.topic && (
-                          <p className="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                             <BookOpen className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                            <span className="truncate">{quiz.topic}</span>
-                          </p>
+                            <span>{quiz.topic}</span>
+                          </div>
                         )}
-
                         {quiz.description && (
-                          <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-relaxed">
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                             {quiz.description}
                           </p>
                         )}
+                      </div>
 
-                        {/* Metadata Specs */}
-                        <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600 font-semibold">
-                          {isScheduledQuiz && quiz.openAt && (
-                            <div className="col-span-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200/70">
-                              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>Jadwal Buka: {formatDateIndo(quiz.openAt)}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-[#364FFF]" />
+                      {/* Bottom Bar: Metadata Chips & Primary Action Buttons */}
+                      <div className="pt-3.5 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+                        {/* Left: Metadata Chips */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-slate-600 font-semibold" title="Durasi Pengerjaan">
+                            <Clock className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                             <span>{quiz.durationMinutes > 0 ? `${quiz.durationMinutes} Menit` : 'Waktu Bebas'}</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <FileQuestion className="w-3.5 h-3.5 text-purple-600" />
+
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-slate-600 font-semibold" title="Jumlah Soal">
+                            <FileQuestion className="w-3.5 h-3.5 text-purple-500 shrink-0" />
                             <span>{quiz.questions.length} Butir Soal</span>
                           </div>
-                          <div className="flex items-center gap-1.5" title="Hadiah Poin Leaderboard">
+
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-amber-900 font-bold" title="Hadiah Poin Leaderboard">
                             <PointIcon className="w-3.5 h-3.5" />
-                            <span className="font-bold text-amber-900">+{quiz.rewardPoints} Pts</span>
+                            <span>+{quiz.rewardPoints} Pts</span>
                           </div>
-                          <div className="flex items-center gap-1.5" title="Hadiah XP Leveling">
-                            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                            <span className="font-bold text-indigo-900">+{quiz.rewardXp !== undefined ? quiz.rewardXp : quiz.rewardPoints} XP</span>
+
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50/70 border border-indigo-200/60 text-indigo-900 font-bold" title="Hadiah XP Leveling">
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span>+{quiz.rewardXp !== undefined ? quiz.rewardXp : quiz.rewardPoints} XP</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="font-bold text-slate-800">
+
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50/70 border border-emerald-200/60 text-emerald-900 font-bold" title="Siswa Mengumpulkan">
+                            <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>
                               {submittedCount} / {studentUsers.length} Siswa
                             </span>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Bottom Actions */}
-                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleStartPaperMode(quiz)}
-                          title="Mulai Kuis Modus Kertas (Layar Proyektor & Pemindai Kamera ArUco)"
-                          className="py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <ScanLine className="w-3.5 h-3.5" />
-                          <span>Modus Kertas</span>
-                        </button>
+                        {/* Right: Primary Launch Actions */}
+                        <div className="flex items-center gap-2.5 shrink-0 self-end lg:self-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleStartPaperMode(quiz)}
+                            title="Mulai Kuis Mode Kertas (Layar Proyektor & Pemindai Kamera ArUco)"
+                            className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-extrabold text-xs shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                          >
+                            <ScanLine className="w-4 h-4" />
+                            <span>Mode Kertas</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenGrading(quiz)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#364FFF] to-[#6339FF] text-white font-extrabold text-xs shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Award className="w-3.5 h-3.5" />
-                          <span>Periksa & Nilai</span>
-                          {needsGradeCount > 0 && (
-                            <span className="ml-1 px-1.5 py-0.2 bg-amber-400 text-slate-900 font-black rounded-full text-[10px]">
-                              {needsGradeCount}
-                            </span>
-                          )}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(quiz)}
-                          title="Edit Kuis & Soal"
-                          className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(quiz.id, quiz.title)}
-                          title="Hapus Kuis"
-                          className="p-2 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenGrading(quiz)}
+                            className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#364FFF] to-[#6339FF] hover:from-indigo-700 hover:to-purple-700 active:scale-98 text-white font-extrabold text-xs shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                          >
+                            <Award className="w-4 h-4" />
+                            <span>Periksa & Nilai</span>
+                            {needsGradeCount > 0 && (
+                              <span className="ml-0.5 px-1.5 py-0.5 bg-amber-400 text-slate-900 font-black rounded-full text-[10px] leading-none">
+                                {needsGradeCount}
+                              </span>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
