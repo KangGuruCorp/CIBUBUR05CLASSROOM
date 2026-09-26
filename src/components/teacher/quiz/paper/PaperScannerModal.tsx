@@ -61,6 +61,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   const [photoToast, setPhotoToast] = useState<string | null>(null);
   const [showStudentList, setShowStudentList] = useState(true);
+  const [showQuestionOverlay, setShowQuestionOverlay] = useState(false);
   const [visibleMarkersCount, setVisibleMarkersCount] = useState(0);
 
   const [recentDetections, setRecentDetections] = useState<
@@ -828,6 +829,17 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             <span className="hidden sm:inline">Foto</span>
           </button>
 
+                    {/* Lihat Soal Button */}
+          <button
+            type="button"
+            onClick={() => setShowQuestionOverlay(true)}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 border border-indigo-500/50 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all cursor-pointer"
+            title="Lihat Soal Penuh"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Lihat Soal</span>
+          </button>
+
           {/* Switch Camera */}
           <button
             type="button"
@@ -1313,4 +1325,5 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+
 
