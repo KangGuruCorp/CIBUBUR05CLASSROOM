@@ -23,6 +23,7 @@ import { Quiz, QuizQuestion, User } from '../../../../types';
 import { PaperModeSession, PaperModeAnswer } from '../../../../types/paperMode';
 import { useApp } from '../../../../context/AppContext';
 import { LatexRenderer } from '../../../../utils/latex';
+import { RichQuestionPrompt } from '../../../common/RichQuestionPrompt';
 import { controlPaperSession } from '../../../../lib/firestoreSync';
 import { fireCelebrationConfetti } from '../../../../utils/gamification';
 
@@ -403,18 +404,8 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
             </div>
 
             <div className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed tracking-wide">
-              <LatexRenderer content={activeQuestion.prompt} />
+              <RichQuestionPrompt text={activeQuestion.prompt} fallbackImageUrl={activeQuestion.imageUrl} theme="dark" />
             </div>
-
-            {activeQuestion.imageUrl && (
-              <div className="mt-4 max-h-72 rounded-2xl overflow-hidden border border-slate-700">
-                <img
-                  src={activeQuestion.imageUrl}
-                  alt="Ilustrasi Soal"
-                  className="w-full h-full object-contain bg-black/40"
-                />
-              </div>
-            )}
           </div>
 
           {/* Options Grid (A, B, C, D) */}
@@ -728,3 +719,4 @@ export const PaperPresenterModal: React.FC<PaperPresenterModalProps> = ({
     </div>
   );
 };
+

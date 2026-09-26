@@ -31,6 +31,7 @@ import { useApp } from '../../../../context/AppContext';
 import { getMarkerOrientation } from '../../../../utils/aruco';
 import { submitPaperAnswer, controlPaperSession } from '../../../../lib/firestoreSync';
 import { LatexRenderer } from '../../../../utils/latex';
+import { RichQuestionPrompt } from '../../../common/RichQuestionPrompt';
 
 interface PaperScannerModalProps {
   isOpen: boolean;
@@ -1079,7 +1080,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
                 Soal #{currentQuestionIndex + 1}
               </span>
               <div className="text-sm sm:text-base font-extrabold text-white leading-snug">
-                <LatexRenderer content={activeQuestion.prompt} />
+                <RichQuestionPrompt text={activeQuestion.prompt} fallbackImageUrl={activeQuestion.imageUrl} theme="dark" />
               </div>
             </div>
 
@@ -1312,3 +1313,4 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     </div>
   );
 };
+

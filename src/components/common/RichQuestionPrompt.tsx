@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Maximize2, X } from 'lucide-react';
+import { LatexRenderer } from '../../utils/latex';
 
 interface RichQuestionPromptProps {
   text: string;
@@ -171,7 +172,7 @@ export const RichQuestionPrompt: React.FC<RichQuestionPromptProps> = ({
                 isDark ? 'text-white' : 'text-slate-900'
               }`}
             >
-              {cleaned}
+              <LatexRenderer content={cleaned} />
             </p>
           );
         }
