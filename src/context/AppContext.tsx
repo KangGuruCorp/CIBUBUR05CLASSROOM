@@ -616,7 +616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Real-time synchronization listeners across all clients
         const unsubSubmissions = subscribeToRealtimeCollection(COLLECTIONS.SUBMISSIONS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const updatedSubs = { ...prev.submissions };
             items.forEach((sub: any) => {
@@ -647,13 +647,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubMaterials);
 
         const unsubAnnouncements = subscribeToRealtimeCollection(COLLECTIONS.ANNOUNCEMENTS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => ({ ...prev, announcements: items as Announcement[] }));
         });
         unsubList.push(unsubAnnouncements);
 
         const unsubUsers = subscribeToRealtimeCollection(COLLECTIONS.USERS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const firestoreUids = new Set(items.map((u: any) => u.uid));
             const now = Date.now();
@@ -681,7 +681,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubUsers);
 
         const unsubUserStats = subscribeToRealtimeCollection(COLLECTIONS.USER_STATS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const updated = { ...prev.userStats };
             items.forEach((st: any) => {
@@ -694,7 +694,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubUserStats);
 
         const unsubPointLedger = subscribeToRealtimeCollection(COLLECTIONS.POINT_LEDGER, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const ledgerMap = new Map((prev.pointLedger || []).map((pl: any) => [pl.id, pl]));
             items.forEach((pl: any) => {
@@ -709,7 +709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubPointLedger);
 
         const unsubMatProgress = subscribeToRealtimeCollection(COLLECTIONS.MATERIAL_PROGRESS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const updated = { ...prev.materialProgress };
             items.forEach((p: any) => {
@@ -722,7 +722,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubMatProgress);
 
         const unsubMisProgress = subscribeToRealtimeCollection(COLLECTIONS.MISSION_PROGRESS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const updated = { ...prev.missionProgress };
             items.forEach((p: any) => {
@@ -748,7 +748,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubMissions);
 
         const unsubUserBadges = subscribeToRealtimeCollection(COLLECTIONS.USER_BADGES, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const badgeMap = new Map((prev.userBadges || []).map((b: any) => [b.id || `${b.userId}_${b.badgeId}`, b]));
             items.forEach((b: any) => {
@@ -768,7 +768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubQuizzes);
 
         const unsubQuizSubmissions = subscribeToRealtimeCollection(COLLECTIONS.QUIZ_SUBMISSIONS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const updated = { ...prev.quizSubmissions };
             items.forEach((sub: any) => {
@@ -783,9 +783,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const unsubChat = subscribeToRealtimeCollection(COLLECTIONS.CHAT_MESSAGES, (items) => {
           if (!isMounted) return;
           setData((prev: any) => {
-            if (!items || items.length === 0) {
-              return prev;
-            }
+                        if (!items) items = [];
             const firestoreIds = new Set(items.map((m: any) => m.id));
             const now = Date.now();
             // Preserve pending optimistic messages sent by currentUser within last 15s
@@ -812,7 +810,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubList.push(unsubChat);
 
         const unsubNotifications = subscribeToRealtimeCollection(COLLECTIONS.NOTIFICATIONS, (items) => {
-          if (!isMounted || !items.length) return;
+          if (!isMounted) return;
           setData((prev: any) => {
             const notifMap = new Map((prev.notifications || []).map((n: any) => [n.id, n]));
             items.forEach((n: any) => {
@@ -3661,6 +3659,8 @@ export const useApp = () => {
   }
   return context;
 };
+
+
 
 
 
