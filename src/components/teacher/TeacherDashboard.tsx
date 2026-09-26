@@ -102,11 +102,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       ? Math.round(gradedSubs.reduce((acc, curr) => acc + (curr.score || 0), 0) / gradedSubs.length)
       : 0;
 
-  // Total points distributed
-  const totalPointsDistributed = (Object.values(userStats) as any[]).reduce(
-    (acc, curr) => acc + (curr.totalPoints || 0),
-    0
-  );
+  
 
   return (
     <div className="space-y-6 pb-12">
@@ -177,7 +173,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       </div>
 
       {/* Metric Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="bg-white rounded-3xl border border-[#BFDBFE]/50 p-5 shadow-xs">
           <div className="w-10 h-10 rounded-2xl bg-[#EEF4FF] text-[#364FFF] flex items-center justify-center mb-3 border border-[#BFDBFE]/40">
             <Users className="w-5 h-5" />
@@ -225,20 +221,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-[#BFDBFE]/50 p-5 shadow-xs">
-          <div className="w-10 h-10 rounded-2xl bg-[#EEF4FF] flex items-center justify-center mb-3 border border-[#BFDBFE]/40">
-            <PointIcon className="w-6 h-6" />
-          </div>
-          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-            Total Poin Prestasi
-          </span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-[#101936] font-display">
-              {totalPointsDistributed}
-            </span>
-            <span className="text-xs text-slate-400 font-medium">Poin aktif</span>
-          </div>
-        </div>
+        
       </div>
 
       {/* Main Sections: Grading Queue & Quick Action Cards */}
@@ -552,3 +535,5 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     </div>
   );
 };
+
+
