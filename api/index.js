@@ -447,5 +447,22 @@ app.post('/api/upload', (req, res) => {
   res.status(400).json({ error: 'Serverless deployment expects Base64 embedding. Upload failed.' });
 });
 
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'Offline (Using Local JSON)';
+  let errorMsg = null;
+  if (pool) {
+    try {
+      const resCheck = await pool.query('SELECT 1 as connected');
+      dbStatus = resCheck.rows.length > 0 ? 'Connected to Supabase PostgreSQL!' : 'Failed';
+    } catch(e) {
+      dbStatus = 'Connection Error';
+      errorMsg = e.message;
+    }
+  } else {
+     errorMsg = 'POSTGRES_URL or DATABASE_URL not found in Vercel Variables.';
+  }
+  res.json({ status: 'OK', database: dbStatus, error: errorMsg, hasEnv: !!process.env.POSTGRES_URL || !!process.env.DATABASE_URL });
+});
+
 export default app;
 
