@@ -62,11 +62,13 @@ export const TeacherStudents: React.FC = () => {
     classes,
     currentClassId,
     updateStudent,
-    deleteStudent,
+    deleteStudent, deleteStudents,
     setStudentPassword,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'cards'>('list'); // Default to list view as requested
   const [selectedStudentForPoint, setSelectedStudentForPoint] = useState<User | null>(null);
   const [pointModalMode, setPointModalMode] = useState<'add' | 'deduct'>('add');
@@ -305,6 +307,51 @@ export const TeacherStudents: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* BULK ACTION BAR */}
+      {selectedIds.length > 0 && (
+        <div className="bg-indigo-600 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg animate-in fade-in slide-in-from-top-4">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+               <Users className="w-4 h-4 text-white" />
+             </div>
+             <div className="text-white">
+               <div className="font-bold text-sm">{selectedIds.length} Siswa Terpilih</div>
+               <div className="text-xs text-indigo-200">Pilih tindakan massal yang ingin dilakukan</div>
+             </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setSelectedIds([])}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-100 hover:bg-white/10 transition-colors text-center"
+            >
+              Batal
+            </button>
+            <button
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Hapus Terpilih
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SELECT ALL CONTROLS */}
+      {filteredStudents.length > 0 && (
+        <div className="flex items-center px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl gap-3">
+          <input
+            type="checkbox"
+            checked={selectedIds.length === filteredStudents.length && filteredStudents.length > 0}
+            onChange={(e) => {
+              if (e.target.checked) setSelectedIds(filteredStudents.map(s => s.uid));
+              else setSelectedIds([]);
+            }}
+            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+          />
+          <span className="text-xs font-bold text-slate-600">Pilih Semua ({filteredStudents.length} Siswa)</span>
+        </div>
+      )}
 
       {/* EMPTY STATE */}
       {filteredStudents.length === 0 ? (
@@ -351,10 +398,19 @@ export const TeacherStudents: React.FC = () => {
             return (
               <div
                 key={student.uid}
-                className="bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-xs transition-all p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 relative"
-              >
-                {/* Identitas Siswa: Absen, Foto, Nama, NIS & Username */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  className="bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-xs transition-all p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 relative"
+                >
+                  {/* Identitas Siswa: Absen, Foto, Nama, NIS & Username */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(student.uid)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIds(prev => [...prev, student.uid]);
+                        else setSelectedIds(prev => prev.filter(id => id !== student.uid));
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer shrink-0"
+                    />
                   {/* Nomor Absen */}
                   <span
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center justify-center shrink-0"
@@ -548,11 +604,22 @@ export const TeacherStudents: React.FC = () => {
             return (
               <div
                 key={student.uid}
-                className="bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-sm transition-all p-4 flex flex-col justify-between relative"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2.5 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                                  className="bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-sm transition-all p-4 flex flex-col justify-between relative"
+                >
+                  <div className="absolute top-4 right-4 z-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(student.uid)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIds(prev => [...prev, student.uid]);
+                        else setSelectedIds(prev => prev.filter(id => id !== student.uid));
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-start justify-between gap-2.5 mb-3">
+                      <div className="flex items-center gap-3 min-w-0">
                       <div
                         onClick={() => setPhotoStudent(student)}
                         className="relative group/avatar cursor-pointer shrink-0"
@@ -1028,6 +1095,22 @@ export const TeacherStudents: React.FC = () => {
         </div>
       )}
 
+            {/* Bulk Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showBulkDeleteConfirm}
+        title="Hapus Siswa Sekaligus?"
+        message={`Apakah Anda yakin ingin menghapus ${selectedIds.length} siswa yang terpilih? Data progres tugas, misi, poin, dan riwayat mereka akan ikut terhapus. Tindakan ini tidak dapat dibatalkan.`}
+        confirmLabel={`Ya, Hapus ${selectedIds.length} Siswa`}
+        cancelLabel="Batal"
+        isDestructive={true}
+        onConfirm={() => {
+          deleteStudents(selectedIds);
+          setSelectedIds([]);
+          setShowBulkDeleteConfirm(false);
+        }}
+        onCancel={() => setShowBulkDeleteConfirm(false)}
+      />
+
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={Boolean(studentToDelete)}
@@ -1188,3 +1271,8 @@ export const TeacherStudents: React.FC = () => {
     </div>
   );
 };
+
+
+
+
+

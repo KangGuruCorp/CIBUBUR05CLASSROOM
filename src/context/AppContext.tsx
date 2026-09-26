@@ -167,6 +167,7 @@ interface AppContextType {
   updateStudent: (userId: string, data: Partial<User>) => void;
   updateStudentPhoto: (userId: string, photoUrl: string) => void;
   deleteStudent: (userId: string) => void;
+  deleteStudents: (userIds: string[]) => void;
   setStudentPassword: (userId: string, newPassword: string) => void;
   resetStudentPassword: (userId: string) => string;
   
@@ -3361,29 +3362,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const deleteStudent = (userId: string) => {
+    const deleteStudent = (userId: string) => {
+    deleteStudents([userId]);
+  };
+
+  const deleteStudents = (userIds: string[]) => {
     setData((prev: any) => {
-      const updatedUsers = (prev.users || []).filter((u: User) => u.uid !== userId);
+      const userIdsSet = new Set(userIds);
+      const updatedUsers = (prev.users || []).filter((u: User) => !userIdsSet.has(u.uid));
       const updatedStats = { ...(prev.userStats || {}) };
-      delete updatedStats[userId];
+      userIds.forEach(id => delete updatedStats[id]);
 
       const updatedSubs = { ...(prev.submissions || {}) };
       Object.keys(updatedSubs).forEach((key) => {
-        if (updatedSubs[key]?.userId === userId) delete updatedSubs[key];
+        if (userIdsSet.has(updatedSubs[key]?.userId)) delete updatedSubs[key];
       });
 
       const updatedMisProg = { ...(prev.missionProgress || {}) };
       Object.keys(updatedMisProg).forEach((key) => {
-        if (updatedMisProg[key]?.userId === userId) delete updatedMisProg[key];
+        if (userIdsSet.has(updatedMisProg[key]?.userId)) delete updatedMisProg[key];
       });
 
       const updatedMatProg = { ...(prev.materialProgress || {}) };
       Object.keys(updatedMatProg).forEach((key) => {
-        if (updatedMatProg[key]?.userId === userId) delete updatedMatProg[key];
+        if (userIdsSet.has(updatedMatProg[key]?.userId)) delete updatedMatProg[key];
       });
 
-      const updatedLedger = (prev.pointLedger || []).filter((pl: any) => pl.userId !== userId);
-      const updatedBadges = (prev.userBadges || []).filter((b: any) => b.userId !== userId);
+      const updatedLedger = (prev.pointLedger || []).filter((pl: any) => !userIdsSet.has(pl.userId));
+      const updatedBadges = (prev.userBadges || []).filter((b: any) => !userIdsSet.has(b.userId));
 
       return {
         ...prev,
@@ -3397,9 +3403,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    // Delete student and stats documents from Firestore
-    deleteDocFromFirestore(COLLECTIONS.USERS, userId);
-    deleteDocFromFirestore(COLLECTIONS.USER_STATS, userId);
+    userIds.forEach(userId => {
+      deleteDocFromFirestore(COLLECTIONS.USERS, userId);
+      deleteDocFromFirestore(COLLECTIONS.USER_STATS, userId);
+    });
   };
 
   const resetStudentPassword = (userId: string): string => {
@@ -3626,6 +3633,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         updateStudentPhoto,
         deleteStudent,
+        deleteStudents,
         setStudentPassword,
         resetStudentPassword,
         markNotificationRead,
@@ -3650,3 +3658,4 @@ export const useApp = () => {
   }
   return context;
 };
+
