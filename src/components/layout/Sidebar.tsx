@@ -63,21 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = () => {
         }).length
       : 0;
 
-  // Teacher pending grading count (tasks)
-  const pendingGradingCount =
-    currentRole === 'teacher'
-      ? Object.values(safeSubmissions).filter(
-          (s: any) => s && (s.status === 'submitted' || s.status === 'resubmitted')
-        ).length
-      : 0;
-
-  // Teacher pending quiz essay grading count
-  const pendingQuizGradingCount =
-    currentRole === 'teacher'
-      ? Object.values(safeQuizSubmissions).filter(
-          (s: any) => s && s.status === 'submitted'
-        ).length
-      : 0;
+  
 
   // Student claimable missions
   const claimableMissionsCount =
@@ -119,15 +105,11 @@ export const Sidebar: React.FC<SidebarProps> = () => {
       id: 'tugas',
       label: 'Tugas Kelas',
       icon: CheckSquare,
-      badge: pendingGradingCount > 0 ? `${pendingGradingCount} Perlu Dinilai` : undefined,
-      badgeColor: 'bg-amber-500 text-white',
     },
     {
       id: 'quiz',
       label: 'Quiz',
       icon: FileQuestion,
-      badge: pendingQuizGradingCount > 0 ? `${pendingQuizGradingCount} Perlu Diperiksa` : undefined,
-      badgeColor: 'bg-amber-500 text-white',
     },
     {
       id: 'papan-ide',
@@ -219,3 +201,5 @@ export const Sidebar: React.FC<SidebarProps> = () => {
     </aside>
   );
 };
+
+
