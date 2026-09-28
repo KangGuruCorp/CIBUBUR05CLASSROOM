@@ -118,6 +118,7 @@ interface AppContextType {
   markMaterialCompleted: (materialId: string) => void;
   submitAssignment: (assignmentId: string, answerText: string, files: any[]) => void;
   submitQuizAnswers: (quizId: string, answers: Record<string, QuizStudentAnswer>) => { success: boolean; submission: QuizSubmission };
+  submitQuiz: (submission: QuizSubmission) => void;
   claimMissionReward: (missionId: string) => void;
   submitMissionForVerification: (missionId: string, note?: string, files?: any[]) => void;
   
@@ -2583,6 +2584,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, submission: newSub };
   };
 
+  const submitQuiz = (submission: QuizSubmission) => {
+    setData((prev: any) => ({
+      ...prev,
+      quizSubmissions: {
+        ...prev.quizSubmissions,
+        [submission.id]: submission,
+      },
+    }));
+    syncDocToFirestore(COLLECTIONS.QUIZ_SUBMISSIONS, submission.id, submission);
+  };
+
   // Teacher grades & manually corrects questions in a quiz submission
   const gradeQuizSubmission = (
     submissionId: string,
@@ -3696,6 +3708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markMaterialCompleted,
         submitAssignment,
         submitQuizAnswers,
+        submitQuiz,
         claimMissionReward,
         createMaterial,
         updateMaterial,

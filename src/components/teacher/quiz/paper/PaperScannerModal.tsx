@@ -23,7 +23,9 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  BarChart2,
 } from 'lucide-react';
+import { PaperAnalyticsModal } from './PaperAnalyticsModal';
 import jsAruco2 from 'js-aruco2';
 import { Quiz, User } from '../../../../types';
 import { PaperModeAnswer, PaperModeSession, PaperOption } from '../../../../types/paperMode';
@@ -39,6 +41,7 @@ interface PaperScannerModalProps {
   quiz: Quiz;
   classId: string;
   initialQuestionIndex?: number;
+  onFinish?: (session: PaperModeSession) => void;
 }
 
 export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
@@ -47,6 +50,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   quiz,
   classId,
   initialQuestionIndex = 0,
+  onFinish,
 }) => {
   const { users = [], classes = [] } = useApp();
 
@@ -125,6 +129,9 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
   // Candidate rotation debouncer to avoid capturing intermediate rotations
   const candidateChangesRef = useRef<Record<string, { option: PaperOption; count: number }>>({});
   const [answeredCount, setAnsweredCount] = useState(0);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [finalSession, setFinalSession] = useState<PaperModeSession | null>(null);
+  const latestSessionRef = useRef<PaperModeSession | null>(null);
 
   // Play subtle beep sound on new detection
   const playBeep = () => {
@@ -180,6 +187,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
         if (res.ok) {
           const s: PaperModeSession = await res.json();
           if (s && s.id) {
+            latestSessionRef.current = s;
             setCurrentQuestionIndex(s.currentQuestionIndex ?? 0);
             setIsLocked(s.status === 'question_closed');
             setShowCorrectAnswer(Boolean(s.showCorrectAnswer));
@@ -204,6 +212,7 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
       const payload = e.detail;
       if (payload && payload.sessionId === sessionId && payload.session) {
         const s = payload.session;
+        latestSessionRef.current = s;
         if (s.currentQuestionIndex !== undefined) setCurrentQuestionIndex(s.currentQuestionIndex);
         if (s.status !== undefined) setIsLocked(s.status === 'question_closed');
         if (s.showCorrectAnswer !== undefined) setShowCorrectAnswer(Boolean(s.showCorrectAnswer));
@@ -717,6 +726,57 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
     return counts;
   }, [classStudents, answeredCount]);
 
+  const handleFinishQuiz = async () => {
+    // 1. Stop active video tracks to release camera hardware
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    // 2. Retrieve session or assemble from memory
+    let currentSession = latestSessionRef.current;
+    if (!currentSession) {
+      try {
+        const res = await fetch(`/api/collections/paperSessions/${encodeURIComponent(sessionId)}`);
+        if (res.ok) {
+          currentSession = await res.json();
+        }
+      } catch {}
+    }
+
+    const sessionObj: PaperModeSession = {
+      id: sessionId,
+      quizId: quiz.id,
+      classId,
+      teacherId: quiz.createdBy,
+      currentQuestionIndex,
+      status: 'completed',
+      answersByQuestion: currentSession?.answersByQuestion || {},
+      showLiveStats: true,
+      showCorrectAnswer: true,
+      createdAt: currentSession?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 3. Mark session completed in backend
+    await controlPaperSession(sessionId, {
+      status: 'completed',
+      showLiveStats: true,
+      showCorrectAnswer: true,
+    });
+
+    // 4. Pass to parent onFinish or open analytics modal directly
+    if (onFinish) {
+      onFinish(sessionObj);
+    } else {
+      setFinalSession(sessionObj);
+      setShowAnalytics(true);
+    }
+  };
+
   const handleNextQuestion = async () => {
     if (currentQuestionIndex < quiz.questions.length - 1) {
       const nextIdx = currentQuestionIndex + 1;
@@ -1123,12 +1183,12 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
 
                             <button
                 type="button"
-                onClick={onClose}
-                className="ml-2 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer bg-rose-600 hover:bg-rose-700 text-white shadow-md"
-                title="Akhiri Pemindaian Kuis"
+                onClick={handleFinishQuiz}
+                className="ml-2 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 shrink-0"
+                title="Setorkan Jawaban & Tampilkan Statistik"
               >
-                <X className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Akhiri Quiz</span>
+                <BarChart2 className="w-3.5 h-3.5" />
+                <span>Setorkan Jawaban</span>
               </button>
             </div>
           </div>
@@ -1290,6 +1350,20 @@ export const PaperScannerModal: React.FC<PaperScannerModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tampilan Statistik Jawaban Siswa setelah Setorkan Jawaban */}
+      {showAnalytics && finalSession && (
+        <PaperAnalyticsModal
+          isOpen={true}
+          onClose={() => {
+            setShowAnalytics(false);
+            onClose();
+          }}
+          quiz={quiz}
+          classId={classId}
+          session={finalSession}
+        />
       )}
     </div>
     </div>

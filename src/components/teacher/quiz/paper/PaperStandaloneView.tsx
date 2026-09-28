@@ -63,14 +63,29 @@ export const PaperStandaloneView: React.FC = () => {
   // Mobile Scanner View
   if (mode === 'paper-scanner') {
     return (
-      <PaperScannerModal
-        isOpen={true}
-        onClose={() => {
-          window.location.href = '/';
-        }}
-        quiz={activeQuiz}
-        classId={classId}
-      />
+      <>
+        {!completedSession ? (
+          <PaperScannerModal
+            isOpen={true}
+            onClose={() => {
+              window.location.href = '/';
+            }}
+            quiz={activeQuiz}
+            classId={classId}
+            onFinish={(session) => setCompletedSession(session)}
+          />
+        ) : (
+          <PaperAnalyticsModal
+            isOpen={true}
+            onClose={() => {
+              window.location.href = '/';
+            }}
+            quiz={activeQuiz}
+            classId={classId}
+            session={completedSession}
+          />
+        )}
+      </>
     );
   }
 
@@ -94,6 +109,10 @@ export const PaperStandaloneView: React.FC = () => {
           onClose={() => setIsScannerOpen(false)}
           quiz={activeQuiz}
           classId={classId}
+          onFinish={(session) => {
+            setIsScannerOpen(false);
+            setCompletedSession(session);
+          }}
         />
       )}
 

@@ -565,6 +565,10 @@ export const TeacherQuizPage: React.FC = () => {
           onClose={() => setScannerQuiz(null)}
           quiz={scannerQuiz.quiz}
           classId={scannerQuiz.classId}
+          onFinish={(session) => {
+            setScannerQuiz(null);
+            setAnalyticsData({ quiz: scannerQuiz.quiz, classId: scannerQuiz.classId, session });
+          }}
         />
       )}
 
